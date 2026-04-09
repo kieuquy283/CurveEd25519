@@ -9,6 +9,7 @@ import typer
 from app.services.crypto_service import CryptoService
 from app.services.key_service import KeyService
 from app.storage.messages import MessagesStorage
+from app.ui.main_window import run_app
 
 
 app = typer.Typer(
@@ -314,4 +315,4 @@ def list_contacts(
 
 
 if __name__ == "__main__":
-    app()
+    run_app()
