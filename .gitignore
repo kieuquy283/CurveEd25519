@@ -1,0 +1,35 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+.venv/
+venv/
+env/
+ENV/
+
+.vscode/
+
+.DS_Store
+Thumbs.db
+
+*.log
+
+*.key
+*.pem
+*.der
+
+data/
+
+# !data/
+# !data/.gitkeep
+
+build/
+dist/
+*.egg-info/
+
+.ipynb_checkpoints/
+
+*.tmp
+*.bak
