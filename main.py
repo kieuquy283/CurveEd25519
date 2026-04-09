@@ -1,20 +1,14 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-from app.logger import banner, error, info, kv, step, success, warning
-from app.contacts import export_contact_card, import_contact_card
-from app.envelope import (
-    detached_sign_file,
-    detached_verify_file,
-    encrypt_and_sign_message,
-    verify_and_decrypt_message,
-)
-from app.keygen import generate_profile
-from app.utils import ensure_dir
+from app.services.crypto_service import CryptoService
+from app.services.key_service import KeyService
+from app.storage.messages import MessagesStorage
 
 
 app = typer.Typer(
@@ -24,100 +18,79 @@ app = typer.Typer(
 
 
 def get_data_dir(custom_data_dir: Optional[str]) -> Path:
-    if custom_data_dir:
-        path = Path(custom_data_dir)
-    else:
-        path = Path("data")
-
-    ensure_dir(path)
-    ensure_dir(path / "profiles")
-    ensure_dir(path / "contacts")
-    ensure_dir(path / "messages")
+    path = Path(custom_data_dir) if custom_data_dir else Path("data")
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "profiles").mkdir(parents=True, exist_ok=True)
+    (path / "contacts").mkdir(parents=True, exist_ok=True)
+    (path / "messages").mkdir(parents=True, exist_ok=True)
     return path
 
 
 @app.command()
 def keygen(
     profile: str = typer.Option(..., help="Profile name, e.g. alice"),
+    overwrite: bool = typer.Option(False, help="Overwrite profile if exists"),
     data_dir: Optional[str] = typer.Option(None, help="Data directory"),
 ):
-    """
-    Generate Ed25519 and X25519 keypairs for a profile.
-    """
-    banner("Curve25519 Crypto App", "Key Generation")
-
     try:
         dd = get_data_dir(data_dir)
+        ks = KeyService(dd)
 
-        step("Preparing data directory")
-        kv("Data directory", str(dd))
+        profile_data = ks.create_profile(profile, overwrite=overwrite)
+        summary = ks.get_profile_summary(profile)
 
-        step("Generating key pairs")
-        meta = generate_profile(dd, profile)
-
-        success(f"Generated profile: {profile}")
-        kv("Ed25519 public", meta["ed25519_public_b64"])
-        kv("X25519 public", meta["x25519_public_b64"])
+        typer.echo(f"[OK] Generated profile: {profile_data['name']}")
+        typer.echo(f"Ed25519 public: {summary['ed25519_public_key']}")
+        typer.echo(f"Ed25519 fingerprint: {summary['ed25519_fingerprint']}")
+        typer.echo(f"X25519 public: {summary['x25519_public_key']}")
+        typer.echo(f"X25519 fingerprint: {summary['x25519_fingerprint']}")
 
     except Exception as exc:
-        error(f"Key generation failed: {exc}")
+        typer.echo(f"[ERROR] Key generation failed: {exc}")
         raise typer.Exit(code=1)
 
 
 @app.command("export-contact")
 def export_contact(
     profile: str = typer.Option(..., help="Local profile name"),
-    out: Optional[str] = typer.Option(None, help="Output contact file"),
+    out: Optional[str] = typer.Option(None, help="Optional export file path"),
     data_dir: Optional[str] = typer.Option(None, help="Data directory"),
 ):
-    """
-    Export a contact card JSON from a local profile.
-    """
-    banner("Curve25519 Crypto App", "Export Contact")
-
     try:
         dd = get_data_dir(data_dir)
-        out_path = Path(out) if out else None
+        ks = KeyService(dd)
 
-        step("Exporting contact card")
-        kv("Profile", profile)
-        if out_path:
-            kv("Requested output", str(out_path))
+        contact = ks.export_contact_from_profile(profile, save_to_contacts=True)
 
-        final_path = export_contact_card(dd, profile, out_path)
+        if out:
+            out_path = ks.export_contact_to_file(profile, out)
+            typer.echo(f"[OK] Contact exported to: {out_path}")
+        else:
+            typer.echo(f"[OK] Contact stored in local contacts for: {contact['name']}")
 
-        success("Contact exported successfully")
-        kv("Saved to", str(final_path))
+        typer.echo(json.dumps(contact, ensure_ascii=False, indent=2))
 
     except Exception as exc:
-        error(f"Export contact failed: {exc}")
+        typer.echo(f"[ERROR] Export contact failed: {exc}")
         raise typer.Exit(code=1)
 
 
 @app.command("import-contact")
 def import_contact(
-    contact_file: str = typer.Option(..., help="Path to *.contact.json"),
+    contact_file: str = typer.Option(..., help="Path to contact JSON"),
     data_dir: Optional[str] = typer.Option(None, help="Data directory"),
 ):
-    """
-    Import a contact card JSON into local contacts store.
-    """
-    banner("Curve25519 Crypto App", "Import Contact")
-
     try:
         dd = get_data_dir(data_dir)
-        contact_path = Path(contact_file)
+        ks = KeyService(dd)
 
-        step("Importing contact")
-        kv("Input file", str(contact_path))
+        contact = ks.import_contact_from_file(contact_file, save=True)
 
-        final_path = import_contact_card(dd, contact_path)
-
-        success("Contact imported successfully")
-        kv("Stored at", str(final_path))
+        typer.echo(f"[OK] Contact imported: {contact['name']}")
+        typer.echo(json.dumps(contact, ensure_ascii=False, indent=2))
 
     except Exception as exc:
-        error(f"Import contact failed: {exc}")
+        typer.echo(f"[ERROR] Import contact failed: {exc}")
         raise typer.Exit(code=1)
 
 
@@ -130,54 +103,40 @@ def encrypt(
     out: Optional[str] = typer.Option(None, help="Output encrypted JSON file"),
     data_dir: Optional[str] = typer.Option(None, help="Data directory"),
 ):
-    """
-    Encrypt + sign a message to a recipient.
-    """
-    banner("Curve25519 Crypto App", "Encrypt + Sign")
-
     try:
         dd = get_data_dir(data_dir)
+        ks = KeyService(dd)
+        ms = MessagesStorage(dd)
 
         if message is None and in_file is None:
             raise typer.BadParameter("Provide either --message or --in")
-
         if message is not None and in_file is not None:
             raise typer.BadParameter("Use only one of --message or --in")
 
-        step("Preparing plaintext")
-        kv("Sender profile", from_profile)
-        kv("Recipient contact", to_contact)
+        sender_profile = ks.load_profile(from_profile)
+        receiver_contact = ks.load_contact(to_contact)
 
-        if message is not None:
-            plaintext = message.encode("utf-8")
-            info("Using plaintext from --message")
-            kv("Plaintext length", f"{len(plaintext)} bytes")
-        else:
-            file_path = Path(in_file)
-            plaintext = file_path.read_bytes()
-            info("Using plaintext from input file")
-            kv("Input file", str(file_path))
-            kv("Plaintext length", f"{len(plaintext)} bytes")
+        plaintext = message if message is not None else Path(in_file).read_bytes()
 
-        out_path = Path(out) if out else dd / "messages" / f"{from_profile}_to_{to_contact}.enc.json"
-
-        step("Running hybrid encryption pipeline")
-        encrypt_and_sign_message(
-            data_dir=dd,
-            sender_profile=from_profile,
-            recipient_contact_name=to_contact,
+        result = CryptoService.encrypt_message(
+            sender_profile=sender_profile,
+            receiver_contact=receiver_contact,
             plaintext=plaintext,
-            out_path=out_path,
+            include_debug=True,
         )
 
-        success("Encryption and signing completed")
-        kv("Encrypted file", str(out_path))
+        envelope = result["envelope"]
+        output_path = Path(out) if out else dd / "messages" / f"{from_profile}_to_{to_contact}.enc"
+        ms.save_to_path(output_path, envelope)
+
+        typer.echo("[OK] Encryption and signing completed")
+        typer.echo(f"Saved to: {output_path}")
 
     except typer.BadParameter as exc:
-        error(str(exc))
+        typer.echo(f"[ERROR] {exc}")
         raise typer.Exit(code=1)
     except Exception as exc:
-        error(f"Encrypt failed: {exc}")
+        typer.echo(f"[ERROR] Encrypt failed: {exc}")
         raise typer.Exit(code=1)
 
 
@@ -186,124 +145,171 @@ def decrypt(
     profile: str = typer.Option(..., help="Recipient local profile"),
     in_file: str = typer.Option(..., "--in", help="Encrypted JSON file"),
     out: Optional[str] = typer.Option(None, help="Output plaintext file"),
-    trusted_sender: Optional[str] = typer.Option(
-        None,
-        help="Trusted sender contact name to check sender public key",
-    ),
+    trusted_sender: Optional[str] = typer.Option(None, help="Trusted sender contact name"),
     data_dir: Optional[str] = typer.Option(None, help="Data directory"),
 ):
-    """
-    Verify signature + decrypt a received message.
-    """
-    banner("Curve25519 Crypto App", "Verify + Decrypt")
-
     try:
         dd = get_data_dir(data_dir)
+        ks = KeyService(dd)
+        ms = MessagesStorage(dd)
 
-        step("Loading encrypted container")
-        kv("Recipient profile", profile)
-        kv("Encrypted file", in_file)
-        if trusted_sender:
-            kv("Trusted sender", trusted_sender)
-        else:
-            warning("No trusted sender provided; envelope public key will be used directly")
+        receiver_profile = ks.load_profile(profile)
+        sender_contact = ks.load_contact(trusted_sender) if trusted_sender else None
+        envelope = ms.load_from_path(in_file)
 
-        step("Running verification and decryption pipeline")
-        plaintext, meta = verify_and_decrypt_message(
-            data_dir=dd,
-            recipient_profile=profile,
-            envelope_path=Path(in_file),
-            trusted_sender_contact_name=trusted_sender,
+        result = CryptoService.decrypt_message(
+            receiver_profile=receiver_profile,
+            envelope=envelope,
+            sender_contact=sender_contact,
+            verify_before_decrypt=True,
+            include_debug=True,
         )
 
-        success("Signature valid and decryption successful")
-        kv("Sender", meta["sender_name"])
-        kv("Recipient", meta["recipient_name"])
-        kv("Suite", meta["suite"])
-        kv("Message ID", meta["msg_id_b64"])
+        typer.echo("[OK] Signature valid and decryption successful")
 
-        if out:
-            output_path = Path(out)
-            output_path.write_bytes(plaintext)
-            success("Plaintext written to file")
-            kv("Output file", str(output_path))
+        if "plaintext" in result:
+            plaintext_value = result["plaintext"]
+            if out:
+                Path(out).write_text(plaintext_value, encoding="utf-8")
+                typer.echo(f"Plaintext written to: {out}")
+            else:
+                typer.echo(plaintext_value)
         else:
-            step("Recovered plaintext")
-            try:
-                typer.echo(plaintext.decode("utf-8"))
-            except UnicodeDecodeError:
-                warning("Plaintext is not valid UTF-8; showing hex output")
-                typer.echo(plaintext.hex())
+            plaintext_b64 = result["plaintext_bytes_b64"]
+            if out:
+                Path(out).write_text(plaintext_b64, encoding="utf-8")
+                typer.echo(f"Binary plaintext (base64) written to: {out}")
+            else:
+                typer.echo(plaintext_b64)
 
     except Exception as exc:
-        error(f"Decrypt failed: {exc}")
+        typer.echo(f"[ERROR] Decrypt failed: {exc}")
         raise typer.Exit(code=1)
 
 
 @app.command()
 def sign(
     profile: str = typer.Option(..., help="Signer local profile"),
-    in_file: str = typer.Option(..., "--in", help="Input file"),
+    message: Optional[str] = typer.Option(None, help="Message text"),
+    in_file: Optional[str] = typer.Option(None, "--in", help="Input file"),
     out: Optional[str] = typer.Option(None, help="Output signature JSON"),
     data_dir: Optional[str] = typer.Option(None, help="Data directory"),
 ):
-    """
-    Detached sign a file using Ed25519.
-    """
-    banner("Curve25519 Crypto App", "Detached Sign")
-
     try:
         dd = get_data_dir(data_dir)
-        in_path = Path(in_file)
-        out_path = Path(out) if out else in_path.with_suffix(in_path.suffix + ".sig.json")
+        ks = KeyService(dd)
 
-        step("Signing file")
-        kv("Profile", profile)
-        kv("Input file", str(in_path))
-        kv("Output signature", str(out_path))
+        if message is None and in_file is None:
+            raise typer.BadParameter("Provide either --message or --in")
+        if message is not None and in_file is not None:
+            raise typer.BadParameter("Use only one of --message or --in")
 
-        detached_sign_file(dd, profile, in_path, out_path)
+        signer_profile = ks.load_profile(profile)
+        payload = message if message is not None else Path(in_file).read_bytes()
 
-        success("Signature created successfully")
-        kv("Signature file", str(out_path))
+        result = CryptoService.sign_message(signer_profile, payload)
 
+        if out:
+            Path(out).write_text(
+                json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            typer.echo(f"[OK] Signature written to: {out}")
+        else:
+            typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+    except typer.BadParameter as exc:
+        typer.echo(f"[ERROR] {exc}")
+        raise typer.Exit(code=1)
     except Exception as exc:
-        error(f"Sign failed: {exc}")
+        typer.echo(f"[ERROR] Sign failed: {exc}")
         raise typer.Exit(code=1)
 
 
 @app.command()
 def verify(
     contact: str = typer.Option(..., help="Trusted contact name"),
-    in_file: str = typer.Option(..., "--in", help="Input file"),
+    message: Optional[str] = typer.Option(None, help="Message text"),
+    in_file: Optional[str] = typer.Option(None, "--in", help="Input file"),
     sig: str = typer.Option(..., help="Signature JSON file"),
     data_dir: Optional[str] = typer.Option(None, help="Data directory"),
 ):
-    """
-    Detached verify a file using imported contact public key.
-    """
-    banner("Curve25519 Crypto App", "Detached Verify")
-
     try:
         dd = get_data_dir(data_dir)
+        ks = KeyService(dd)
 
-        step("Verifying detached signature")
-        kv("Trusted contact", contact)
-        kv("Input file", in_file)
-        kv("Signature file", sig)
+        if message is None and in_file is None:
+            raise typer.BadParameter("Provide either --message or --in")
+        if message is not None and in_file is not None:
+            raise typer.BadParameter("Use only one of --message or --in")
 
-        ok = detached_verify_file(dd, contact, Path(in_file), Path(sig))
+        trusted_contact = ks.load_contact(contact)
+        payload = message if message is not None else Path(in_file).read_bytes()
+
+        sig_payload = json.loads(Path(sig).read_text(encoding="utf-8"))
+        signature_b64 = sig_payload["signature"]
+
+        ok = CryptoService.verify_message(
+            signer_contact=trusted_contact,
+            message=payload,
+            signature_b64=signature_b64,
+        )
 
         if ok:
-            success("Signature is valid")
+            typer.echo("[OK] Signature is valid")
         else:
-            error("Signature is invalid")
+            typer.echo("[ERROR] Signature is invalid")
             raise typer.Exit(code=1)
 
+    except typer.BadParameter as exc:
+        typer.echo(f"[ERROR] {exc}")
+        raise typer.Exit(code=1)
     except typer.Exit:
         raise
     except Exception as exc:
-        error(f"Verify failed: {exc}")
+        typer.echo(f"[ERROR] Verify failed: {exc}")
+        raise typer.Exit(code=1)
+
+
+@app.command("list-profiles")
+def list_profiles(
+    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
+):
+    try:
+        dd = get_data_dir(data_dir)
+        ks = KeyService(dd)
+
+        profiles = ks.list_profiles()
+        if not profiles:
+            typer.echo("No profiles found.")
+            return
+
+        for name in profiles:
+            typer.echo(name)
+
+    except Exception as exc:
+        typer.echo(f"[ERROR] List profiles failed: {exc}")
+        raise typer.Exit(code=1)
+
+
+@app.command("list-contacts")
+def list_contacts(
+    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
+):
+    try:
+        dd = get_data_dir(data_dir)
+        ks = KeyService(dd)
+
+        contacts = ks.list_contacts()
+        if not contacts:
+            typer.echo("No contacts found.")
+            return
+
+        for name in contacts:
+            typer.echo(name)
+
+    except Exception as exc:
+        typer.echo(f"[ERROR] List contacts failed: {exc}")
         raise typer.Exit(code=1)
 
 
