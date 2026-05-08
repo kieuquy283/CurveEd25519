@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 from typing import Optional
@@ -10,6 +11,7 @@ from app.services.crypto_service import CryptoService
 from app.services.key_service import KeyService
 from app.storage.messages import MessagesStorage
 from app.ui.main_window import run_app
+from app.services.protocol_service import ProtocolService
 
 
 app = typer.Typer(
@@ -119,7 +121,7 @@ def encrypt(
 
         plaintext = message if message is not None else Path(in_file).read_bytes()
 
-        result = CryptoService.encrypt_message(
+        result = ProtocolService.send_message(
             sender_profile=sender_profile,
             receiver_contact=receiver_contact,
             plaintext=plaintext,
@@ -158,11 +160,11 @@ def decrypt(
         sender_contact = ks.load_contact(trusted_sender) if trusted_sender else None
         envelope = ms.load_from_path(in_file)
 
-        result = CryptoService.decrypt_message(
+        result = ProtocolService.receive_message(
             receiver_profile=receiver_profile,
             envelope=envelope,
             sender_contact=sender_contact,
-            verify_before_decrypt=True,
+            verify_signature=True,
             include_debug=True,
         )
 
@@ -208,7 +210,10 @@ def sign(
         signer_profile = ks.load_profile(profile)
         payload = message if message is not None else Path(in_file).read_bytes()
 
-        result = CryptoService.sign_message(signer_profile, payload)
+        private_b64 = signer_profile["ed25519"]["private_key"]
+        data_bytes = payload if isinstance(payload, (bytes, bytearray)) else payload.encode("utf-8")
+        sig = CryptoService.sign_bytes(private_key_b64=private_b64, data=data_bytes)
+        result = {"signature": base64.b64encode(sig).decode("utf-8"), "algorithm": "Ed25519"}
 
         if out:
             Path(out).write_text(
@@ -250,11 +255,10 @@ def verify(
         sig_payload = json.loads(Path(sig).read_text(encoding="utf-8"))
         signature_b64 = sig_payload["signature"]
 
-        ok = CryptoService.verify_message(
-            signer_contact=trusted_contact,
-            message=payload,
-            signature_b64=signature_b64,
-        )
+        pub_b64 = trusted_contact["ed25519"]["public_key"]
+        data_bytes = payload if isinstance(payload, (bytes, bytearray)) else payload.encode("utf-8")
+        sig_bytes = base64.b64decode(signature_b64)
+        ok = CryptoService.verify_bytes(public_key_b64=pub_b64, data=data_bytes, signature=sig_bytes)
 
         if ok:
             typer.echo("[OK] Signature is valid")

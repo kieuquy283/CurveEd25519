@@ -51,7 +51,8 @@ def build_header(
     salt_wrap_b64: str,
     msg_id_b64: str,
     payload_nonce_b64: str,
-    created_at: str | None = None,
+    expires_in: int = 300,
+    created_at: str,
 ) -> JsonDict:
     """
     Tạo header chuẩn cho message envelope.
@@ -60,6 +61,8 @@ def build_header(
         "version": version,
         "suite": suite,
         "message_id": msg_id_b64,
+        "expires_in": expires_in,
+        "created_at": created_at,
         "sender": {
             "name": sender_name,
             "ed25519_public_key": sender_sig_public_b64,
@@ -78,8 +81,7 @@ def build_header(
     }
 
     if created_at is not None:
-        header["created_at"] = created_at
-
+        header["created_at"] = created_at    
     return header
 
 
@@ -225,7 +227,7 @@ def validate_header(header: JsonDict) -> None:
     if not isinstance(header, dict):
         raise EnvelopeError("Header must be a dict.")
 
-    required_top = ("version", "suite", "message_id", "sender", "receiver", "crypto")
+    required_top = ("version", "suite", "message_id","created_id", "expires_in", "sender", "receiver", "crypto")
     for key in required_top:
         if key not in header:
             raise EnvelopeError(f"Header missing field: {key}")
@@ -303,6 +305,8 @@ def extract_meta(envelope: JsonDict) -> JsonDict:
         "version": header["version"],
         "suite": header["suite"],
         "message_id": header["message_id"],
+        "created_at": header["created_at"],
+        "expires_in": header["expires_in"],
         "sender_name": header["sender"]["name"],
         "sender_ed25519_fingerprint": header["sender"]["ed25519_fingerprint"],
         "recipient_name": header["receiver"]["name"],
