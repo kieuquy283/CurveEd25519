@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import base64
-from typing import Any, Dict, Tuple, Union
+import hashlib
+import os
+from typing import Tuple, Union
 
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
@@ -19,6 +20,13 @@ from ..core.envelope import (
     b64e,
     canonical_dumps,
     validate_envelope,
+)
+
+from ..core.nonce import (
+    CHACHA20_NONCE_SIZE,
+    NONCE_DOMAIN_PAYLOAD,
+    generate_nonce,
+    nonce_from_b64,
 )
 
 from ..core.x25519 import (
@@ -63,31 +71,31 @@ class CryptoService:
 
     Responsibilities:
     - Ed25519 sign / verify
-    - X25519 shared secret
+    - X25519 shared secret derivation
     - HKDF derivation
     - ChaCha20-Poly1305 encryption
     - payload key wrapping
 
     DOES NOT:
-    - protocol orchestration
     - replay protection
-    - envelope construction
-    - message routing
+    - protocol orchestration
+    - envelope lifecycle
+    - routing
     """
 
     # =====================================================
-    # Suite constants
+    # Suite Constants
     # =====================================================
 
     WRAP_INFO = b"curve25519-demo/wrap-key-v1"
 
 
     PAYLOAD_KEY_LEN = 32
-    CHACHA20_NONCE_LEN = 12
+
 
     HKDF_OUT_LEN = (
         PAYLOAD_KEY_LEN
-        + CHACHA20_NONCE_LEN
+        + CHACHA20_NONCE_SIZE
     )
 
     # =====================================================
@@ -104,6 +112,11 @@ class CryptoService:
         """
         Low-level Ed25519 signing primitive.
         """
+
+        if not isinstance(data, bytes):
+            raise TypeError(
+                "data must be bytes."
+            )
 
         private_key = (
             cls._load_ed25519_private_key_from_b64(
@@ -124,6 +137,12 @@ class CryptoService:
         """
         Low-level Ed25519 verification primitive.
         """
+
+        if not isinstance(data, bytes):
+            return False
+
+        if not isinstance(signature, bytes):
+            return False
 
         public_key = (
             cls._load_ed25519_public_key_from_b64(
@@ -155,28 +174,28 @@ class CryptoService:
     ) -> JsonDict:
         """
         Hybrid encryption primitive.
-
-        Output:
-        - ciphertext
-        - wrapped payload key
-        - ephemeral public key
-        - salts/nonces
         """
 
+        if not isinstance(plaintext, bytes):
+            raise TypeError(
+                "plaintext must be bytes."
+            )
+
+        if not isinstance(aad, bytes):
+            raise TypeError(
+                "aad must be bytes."
+            )
+
         # =================================================
-        # Generate payload materials
+        # Payload materials
         # =================================================
 
-        payload_key = (
-            cls.generate_random_bytes(
-                cls.PAYLOAD_KEY_LEN
-            )
+        payload_key = os.urandom(
+            cls.PAYLOAD_KEY_LEN
         )
 
-        payload_nonce = (
-            cls.generate_random_bytes(
-                cls.CHACHA20_NONCE_LEN
-            )
+        payload_nonce = generate_nonce(
+            NONCE_DOMAIN_PAYLOAD
         )
 
         # =================================================
@@ -204,9 +223,7 @@ class CryptoService:
         # HKDF wrap material
         # =================================================
 
-        salt_wrap = (
-            cls.generate_random_bytes(16)
-        )
+        salt_wrap = os.urandom(16)
 
         wrap_key, wrap_nonce = (
             cls.derive_wrap_material(
@@ -318,7 +335,7 @@ class CryptoService:
             crypto["salt_wrap"]
         )
 
-        payload_nonce = b64d(
+        payload_nonce = nonce_from_b64(
             crypto["payload_nonce"]
         )
 
@@ -356,13 +373,19 @@ class CryptoService:
             )
         )
 
-        aad = canonical_dumps(header)
+        aad = canonical_dumps(
+            header
+        )
 
         # =================================================
-        # Unwrap payload key
+        # Authenticated decrypt
         # =================================================
 
         try:
+
+            # =============================================
+            # Unwrap payload key
+            # =============================================
 
             wrap_cipher = (
                 ChaCha20Poly1305(wrap_key)
@@ -415,6 +438,16 @@ class CryptoService:
         - wrap_nonce
         """
 
+        if not isinstance(shared_secret, bytes):
+            raise TypeError(
+                "shared_secret must be bytes."
+            )
+
+        if not isinstance(salt_wrap, bytes):
+            raise TypeError(
+                "salt_wrap must be bytes."
+            )
+
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
             length=cls.HKDF_OUT_LEN,
@@ -433,10 +466,13 @@ class CryptoService:
         wrap_nonce = material[
             cls.PAYLOAD_KEY_LEN :
             cls.PAYLOAD_KEY_LEN
-            + cls.CHACHA20_NONCE_LEN
+            + CHACHA20_NONCE_SIZE
         ]
 
-        return wrap_key, wrap_nonce
+        return (
+            wrap_key,
+            wrap_nonce,
+        )
 
     # =====================================================
     # KEY LOADERS
@@ -447,11 +483,14 @@ class CryptoService:
         private_key_b64: str,
     ) -> Ed25519PrivateKey:
 
-        raw = b64d(private_key_b64)
+        raw = b64d(
+            private_key_b64
+        )
 
         if len(raw) != 32:
             raise InvalidProfileError(
-                "Ed25519 private key must be 32 bytes."
+                "Ed25519 private key "
+                "must be 32 bytes."
             )
 
         return (
@@ -464,11 +503,14 @@ class CryptoService:
         public_key_b64: str,
     ) -> Ed25519PublicKey:
 
-        raw = b64d(public_key_b64)
+        raw = b64d(
+            public_key_b64
+        )
 
         if len(raw) != 32:
             raise InvalidProfileError(
-                "Ed25519 public key must be 32 bytes."
+                "Ed25519 public key "
+                "must be 32 bytes."
             )
 
         return (
@@ -480,22 +522,14 @@ class CryptoService:
     # UTILITIES
     # =====================================================
 
-    @staticmethod
-    def generate_random_bytes(
-        length: int,
-    ) -> bytes:
 
-        import os
-
-        return os.urandom(length)
 
     @staticmethod
     def sha256_hex(
         data: bytes,
     ) -> str:
 
-        import hashlib
-
+    
         return hashlib.sha256(
             data
         ).hexdigest()
@@ -524,72 +558,179 @@ class CryptoService:
             return data
 
         if isinstance(data, str):
-            return data.encode("utf-8")
+            return data.encode(
+                "utf-8"
+            )
 
         raise TypeError(
             "Expected bytes or str."
         )
-        
-        # -----------------------
-    # Compatibility helpers
-    # -----------------------
+
+    # =====================================================
+    # Compatibility Helpers
+    # =====================================================
 
     @classmethod
-    def _b64decode(cls, value: str) -> bytes:
-        return b64d(value)
+    def _safe_fingerprint(
+        cls,
+        public_key_b64: str,
+    ) -> str:
 
-    @classmethod
-    def _safe_fingerprint(cls, public_key_b64: str) -> str:
         try:
-            return cls.fingerprint_public_key(public_key_b64)
+            return (
+                cls.fingerprint_public_key(
+                    public_key_b64
+                )
+            )
+
         except Exception:
             return "invalid"
 
     @classmethod
-    def _get_ed25519_private_key_b64(cls, profile_or_b64: Union[JsonDict, str]) -> str:
-        if isinstance(profile_or_b64, str):
+    def _get_ed25519_private_key_b64(
+        cls,
+        profile_or_b64: Union[
+            JsonDict,
+            str,
+        ],
+    ) -> str:
+
+        if isinstance(
+            profile_or_b64,
+            str,
+        ):
             return profile_or_b64
-        if isinstance(profile_or_b64, dict):
-            ed = profile_or_b64.get("ed25519")
-            if isinstance(ed, dict) and ed.get("private_key"):
+
+        if isinstance(
+            profile_or_b64,
+            dict,
+        ):
+            ed = profile_or_b64.get(
+                "ed25519"
+            )
+
+            if (
+                isinstance(ed, dict)
+                and ed.get("private_key")
+            ):
                 return ed["private_key"]
-            # legacy keys
-            if profile_or_b64.get("private_key"):
-                return profile_or_b64["private_key"]
-        raise InvalidProfileError("Missing ed25519 private key in profile/contact.")
+
+            if profile_or_b64.get(
+                "private_key"
+            ):
+                return profile_or_b64[
+                    "private_key"
+                ]
+
+        raise InvalidProfileError(
+            "Missing ed25519 "
+            "private key."
+        )
 
     @classmethod
-    def _get_ed25519_public_key_b64(cls, obj: Union[JsonDict, str]) -> str:
+    def _get_ed25519_public_key_b64(
+        cls,
+        obj: Union[
+            JsonDict,
+            str,
+        ],
+    ) -> str:
+
         if isinstance(obj, str):
             return obj
+
         if isinstance(obj, dict):
-            ed = obj.get("ed25519")
-            if isinstance(ed, dict) and ed.get("public_key"):
+
+            ed = obj.get(
+                "ed25519"
+            )
+
+            if (
+                isinstance(ed, dict)
+                and ed.get("public_key")
+            ):
                 return ed["public_key"]
-            if obj.get("ed25519_public_key"):
-                return obj["ed25519_public_key"]
-        raise InvalidProfileError("Missing ed25519 public key in profile/contact.")
+
+            if obj.get(
+                "ed25519_public_key"
+            ):
+                return obj[
+                    "ed25519_public_key"
+                ]
+
+        raise InvalidProfileError(
+            "Missing ed25519 "
+            "public key."
+        )
 
     @classmethod
-    def _get_x25519_public_key_b64(cls, obj: Union[JsonDict, str]) -> str:
+    def _get_x25519_public_key_b64(
+        cls,
+        obj: Union[
+            JsonDict,
+            str,
+        ],
+    ) -> str:
+
         if isinstance(obj, str):
             return obj
+
         if isinstance(obj, dict):
-            x = obj.get("x25519")
-            if isinstance(x, dict) and x.get("public_key"):
+
+            x = obj.get(
+                "x25519"
+            )
+
+            if (
+                isinstance(x, dict)
+                and x.get("public_key")
+            ):
                 return x["public_key"]
-            if obj.get("x25519_public_key"):
-                return obj["x25519_public_key"]
-        raise InvalidProfileError("Missing x25519 public key in profile/contact.")
+
+            if obj.get(
+                "x25519_public_key"
+            ):
+                return obj[
+                    "x25519_public_key"
+                ]
+
+        raise InvalidProfileError(
+            "Missing x25519 "
+            "public key."
+        )
 
     @classmethod
-    def _get_x25519_private_key_b64(cls, profile: Union[JsonDict, str]) -> str:
+    def _get_x25519_private_key_b64(
+        cls,
+        profile: Union[
+            JsonDict,
+            str,
+        ],
+    ) -> str:
+
         if isinstance(profile, str):
             return profile
+
         if isinstance(profile, dict):
-            x = profile.get("x25519")
-            if isinstance(x, dict) and x.get("private_key"):
+
+            x = profile.get(
+                "x25519"
+            )
+
+            if (
+                isinstance(x, dict)
+                and x.get("private_key")
+            ):
                 return x["private_key"]
-            if profile.get("x25519_private_key"):
-                return profile["x25519_private_key"]
-        raise InvalidProfileError("Missing x25519 private key in profile.")
+
+            if profile.get(
+                "x25519_private_key"
+            ):
+                return profile[
+                    "x25519_private_key"
+                ]
+
+        raise InvalidProfileError(
+            "Missing x25519 "
+            "private key."
+        )
