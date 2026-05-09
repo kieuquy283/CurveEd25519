@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 from typing import List, Optional
 
-from models.delivery_record import (
+from app.models.delivery_record import (
     DeliveryRecord,
     DeliveryState,
 )

@@ -1,322 +1,393 @@
 from __future__ import annotations
 
-import base64
-import json
+import asyncio
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-from app.services.crypto_service import CryptoService
-from app.services.key_service import KeyService
-from app.storage.messages import MessagesStorage
-from app.ui.main_window import run_app
-from app.services.protocol_service import ProtocolService
+from app.profiles.profile_service import (
+    ProfileService,
+)
 
+from app.profiles.contact_service import (
+    ContactService,
+)
+
+from app.profiles.trust_service import (
+    TrustService,
+)
+
+from app.services.protocol_service import (
+    ProtocolService,
+)
+
+from app.services.notification_service import (
+    NotificationService,
+)
+
+from app.services.typing_service import (
+    TypingService,
+)
+
+from app.services.event_bus import (
+    EventBus,
+)
+
+from app.transport.transport_server import (
+    TransportServer,
+)
+from app.transport.transport_server import (
+    TransportServerConfig,
+)
+
+from app.transport.connection_manager import (
+    ConnectionManager,
+)
+
+from app.transport.peer_registry import (
+    PeerRegistry,
+)
+
+from app.storage.message_store import (
+    MessageStore,
+)
+
+from app.storage.queue_store import (
+    QueueStore,
+)
+
+from app.models.delivery_record import (
+    DeliveryState,
+)
+
+from tests.run_system_validation import (
+    main as validation_main,
+)
+
+
+# =========================================================
+# APP
+# =========================================================
 
 app = typer.Typer(
-    help="Curve25519 demo app: X25519 + Ed25519 + HKDF + ChaCha20-Poly1305",
+    help="Secure Messenger System",
     no_args_is_help=True,
 )
 
 
-def get_data_dir(custom_data_dir: Optional[str]) -> Path:
-    path = Path(custom_data_dir) if custom_data_dir else Path("data")
-    path.mkdir(parents=True, exist_ok=True)
-    (path / "profiles").mkdir(parents=True, exist_ok=True)
-    (path / "contacts").mkdir(parents=True, exist_ok=True)
-    (path / "messages").mkdir(parents=True, exist_ok=True)
+# =========================================================
+# PATHS
+# =========================================================
+
+def ensure_data_dirs(
+    base_dir: Path,
+) -> None:
+
+    dirs = [
+        "profiles",
+        "contacts",
+        "messages",
+        "queues",
+        "trust",
+        "attachments",
+        "sessions",
+    ]
+
+    base_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    for d in dirs:
+
+        (
+            base_dir / d
+        ).mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+
+def get_data_dir(
+    custom_dir: Optional[str],
+) -> Path:
+
+    path = (
+        Path(custom_dir)
+        if custom_dir
+        else Path("data")
+    )
+
+    ensure_data_dirs(path)
+
     return path
 
 
-@app.command()
-def keygen(
-    profile: str = typer.Option(..., help="Profile name, e.g. alice"),
-    overwrite: bool = typer.Option(False, help="Overwrite profile if exists"),
-    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
+# =========================================================
+# PROFILE COMMANDS
+# =========================================================
+
+@app.command("create-profile")
+def create_profile(
+    name: str,
+    data_dir: Optional[str] = None,
 ):
-    try:
-        dd = get_data_dir(data_dir)
-        ks = KeyService(dd)
 
-        profile_data = ks.create_profile(profile, overwrite=overwrite)
-        summary = ks.get_profile_summary(profile)
+    dd = get_data_dir(data_dir)
 
-        typer.echo(f"[OK] Generated profile: {profile_data['name']}")
-        typer.echo(f"Ed25519 public: {summary['ed25519_public_key']}")
-        typer.echo(f"Ed25519 fingerprint: {summary['ed25519_fingerprint']}")
-        typer.echo(f"X25519 public: {summary['x25519_public_key']}")
-        typer.echo(f"X25519 fingerprint: {summary['x25519_fingerprint']}")
-
-    except Exception as exc:
-        typer.echo(f"[ERROR] Key generation failed: {exc}")
-        raise typer.Exit(code=1)
-
-
-@app.command("export-contact")
-def export_contact(
-    profile: str = typer.Option(..., help="Local profile name"),
-    out: Optional[str] = typer.Option(None, help="Optional export file path"),
-    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
-):
-    try:
-        dd = get_data_dir(data_dir)
-        ks = KeyService(dd)
-
-        contact = ks.export_contact_from_profile(profile, save_to_contacts=True)
-
-        if out:
-            out_path = ks.export_contact_to_file(profile, out)
-            typer.echo(f"[OK] Contact exported to: {out_path}")
-        else:
-            typer.echo(f"[OK] Contact stored in local contacts for: {contact['name']}")
-
-        typer.echo(json.dumps(contact, ensure_ascii=False, indent=2))
-
-    except Exception as exc:
-        typer.echo(f"[ERROR] Export contact failed: {exc}")
-        raise typer.Exit(code=1)
-
-
-@app.command("import-contact")
-def import_contact(
-    contact_file: str = typer.Option(..., help="Path to contact JSON"),
-    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
-):
-    try:
-        dd = get_data_dir(data_dir)
-        ks = KeyService(dd)
-
-        contact = ks.import_contact_from_file(contact_file, save=True)
-
-        typer.echo(f"[OK] Contact imported: {contact['name']}")
-        typer.echo(json.dumps(contact, ensure_ascii=False, indent=2))
-
-    except Exception as exc:
-        typer.echo(f"[ERROR] Import contact failed: {exc}")
-        raise typer.Exit(code=1)
-
-
-@app.command()
-def encrypt(
-    from_profile: str = typer.Option(..., "--from", help="Sender local profile"),
-    to_contact: str = typer.Option(..., "--to", help="Recipient contact name"),
-    message: Optional[str] = typer.Option(None, help="Plain text message"),
-    in_file: Optional[str] = typer.Option(None, "--in", help="Input plaintext file"),
-    out: Optional[str] = typer.Option(None, help="Output encrypted JSON file"),
-    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
-):
-    try:
-        dd = get_data_dir(data_dir)
-        ks = KeyService(dd)
-        ms = MessagesStorage(dd)
-
-        if message is None and in_file is None:
-            raise typer.BadParameter("Provide either --message or --in")
-        if message is not None and in_file is not None:
-            raise typer.BadParameter("Use only one of --message or --in")
-
-        sender_profile = ks.load_profile(from_profile)
-        receiver_contact = ks.load_contact(to_contact)
-
-        plaintext = message if message is not None else Path(in_file).read_bytes()
-
-        result = ProtocolService.send_message(
-            sender_profile=sender_profile,
-            receiver_contact=receiver_contact,
-            plaintext=plaintext,
-            include_debug=True,
+    service = ProfileService(
+        profiles_dir=(
+            dd / "profiles"
         )
+    )
 
-        envelope = result["envelope"]
-        output_path = Path(out) if out else dd / "messages" / f"{from_profile}_to_{to_contact}.enc"
-        ms.save_to_path(output_path, envelope)
-
-        typer.echo("[OK] Encryption and signing completed")
-        typer.echo(f"Saved to: {output_path}")
-
-    except typer.BadParameter as exc:
-        typer.echo(f"[ERROR] {exc}")
-        raise typer.Exit(code=1)
-    except Exception as exc:
-        typer.echo(f"[ERROR] Encrypt failed: {exc}")
-        raise typer.Exit(code=1)
-
-
-@app.command()
-def decrypt(
-    profile: str = typer.Option(..., help="Recipient local profile"),
-    in_file: str = typer.Option(..., "--in", help="Encrypted JSON file"),
-    out: Optional[str] = typer.Option(None, help="Output plaintext file"),
-    trusted_sender: Optional[str] = typer.Option(None, help="Trusted sender contact name"),
-    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
-):
-    try:
-        dd = get_data_dir(data_dir)
-        ks = KeyService(dd)
-        ms = MessagesStorage(dd)
-
-        receiver_profile = ks.load_profile(profile)
-        sender_contact = ks.load_contact(trusted_sender) if trusted_sender else None
-        envelope = ms.load_from_path(in_file)
-
-        result = ProtocolService.receive_message(
-            receiver_profile=receiver_profile,
-            envelope=envelope,
-            sender_contact=sender_contact,
-            verify_signature=True,
-            include_debug=True,
+    profile = (
+        service.create_profile(
+            name=name,
+            save=True,
         )
+    )
 
-        typer.echo("[OK] Signature valid and decryption successful")
-
-        if "plaintext" in result:
-            plaintext_value = result["plaintext"]
-            if out:
-                Path(out).write_text(plaintext_value, encoding="utf-8")
-                typer.echo(f"Plaintext written to: {out}")
-            else:
-                typer.echo(plaintext_value)
-        else:
-            plaintext_b64 = result["plaintext_bytes_b64"]
-            if out:
-                Path(out).write_text(plaintext_b64, encoding="utf-8")
-                typer.echo(f"Binary plaintext (base64) written to: {out}")
-            else:
-                typer.echo(plaintext_b64)
-
-    except Exception as exc:
-        typer.echo(f"[ERROR] Decrypt failed: {exc}")
-        raise typer.Exit(code=1)
-
-
-@app.command()
-def sign(
-    profile: str = typer.Option(..., help="Signer local profile"),
-    message: Optional[str] = typer.Option(None, help="Message text"),
-    in_file: Optional[str] = typer.Option(None, "--in", help="Input file"),
-    out: Optional[str] = typer.Option(None, help="Output signature JSON"),
-    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
-):
-    try:
-        dd = get_data_dir(data_dir)
-        ks = KeyService(dd)
-
-        if message is None and in_file is None:
-            raise typer.BadParameter("Provide either --message or --in")
-        if message is not None and in_file is not None:
-            raise typer.BadParameter("Use only one of --message or --in")
-
-        signer_profile = ks.load_profile(profile)
-        payload = message if message is not None else Path(in_file).read_bytes()
-
-        private_b64 = signer_profile["ed25519"]["private_key"]
-        data_bytes = payload if isinstance(payload, (bytes, bytearray)) else payload.encode("utf-8")
-        sig = CryptoService.sign_bytes(private_key_b64=private_b64, data=data_bytes)
-        result = {"signature": base64.b64encode(sig).decode("utf-8"), "algorithm": "Ed25519"}
-
-        if out:
-            Path(out).write_text(
-                json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True),
-                encoding="utf-8",
-            )
-            typer.echo(f"[OK] Signature written to: {out}")
-        else:
-            typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
-
-    except typer.BadParameter as exc:
-        typer.echo(f"[ERROR] {exc}")
-        raise typer.Exit(code=1)
-    except Exception as exc:
-        typer.echo(f"[ERROR] Sign failed: {exc}")
-        raise typer.Exit(code=1)
-
-
-@app.command()
-def verify(
-    contact: str = typer.Option(..., help="Trusted contact name"),
-    message: Optional[str] = typer.Option(None, help="Message text"),
-    in_file: Optional[str] = typer.Option(None, "--in", help="Input file"),
-    sig: str = typer.Option(..., help="Signature JSON file"),
-    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
-):
-    try:
-        dd = get_data_dir(data_dir)
-        ks = KeyService(dd)
-
-        if message is None and in_file is None:
-            raise typer.BadParameter("Provide either --message or --in")
-        if message is not None and in_file is not None:
-            raise typer.BadParameter("Use only one of --message or --in")
-
-        trusted_contact = ks.load_contact(contact)
-        payload = message if message is not None else Path(in_file).read_bytes()
-
-        sig_payload = json.loads(Path(sig).read_text(encoding="utf-8"))
-        signature_b64 = sig_payload["signature"]
-
-        pub_b64 = trusted_contact["ed25519"]["public_key"]
-        data_bytes = payload if isinstance(payload, (bytes, bytearray)) else payload.encode("utf-8")
-        sig_bytes = base64.b64decode(signature_b64)
-        ok = CryptoService.verify_bytes(public_key_b64=pub_b64, data=data_bytes, signature=sig_bytes)
-
-        if ok:
-            typer.echo("[OK] Signature is valid")
-        else:
-            typer.echo("[ERROR] Signature is invalid")
-            raise typer.Exit(code=1)
-
-    except typer.BadParameter as exc:
-        typer.echo(f"[ERROR] {exc}")
-        raise typer.Exit(code=1)
-    except typer.Exit:
-        raise
-    except Exception as exc:
-        typer.echo(f"[ERROR] Verify failed: {exc}")
-        raise typer.Exit(code=1)
+    typer.echo(
+        f"[OK] Created profile: {profile['name']}"
+    )
 
 
 @app.command("list-profiles")
 def list_profiles(
-    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
+    data_dir: Optional[str] = None,
 ):
-    try:
-        dd = get_data_dir(data_dir)
-        ks = KeyService(dd)
 
-        profiles = ks.list_profiles()
-        if not profiles:
-            typer.echo("No profiles found.")
-            return
+    dd = get_data_dir(data_dir)
 
-        for name in profiles:
-            typer.echo(name)
+    service = ProfileService(
+        profiles_dir=(
+            dd / "profiles"
+        )
+    )
 
-    except Exception as exc:
-        typer.echo(f"[ERROR] List profiles failed: {exc}")
-        raise typer.Exit(code=1)
+    profiles = (
+        service.list_profiles()
+    )
+
+    for p in profiles:
+
+        typer.echo(p)
+
+
+# =========================================================
+# CONTACT COMMANDS
+# =========================================================
+
+@app.command("add-contact")
+def add_contact(
+    profile_name: str,
+    contact_file: str,
+    data_dir: Optional[str] = None,
+):
+
+    dd = get_data_dir(data_dir)
+
+    service = ContactService(
+        contacts_dir=(
+            dd / "contacts"
+        )
+    )
+
+    contact = (
+        service.import_contact(
+            contact_file
+        )
+    )
+
+    typer.echo(
+        f"[OK] Imported contact: {contact['name']}"
+    )
 
 
 @app.command("list-contacts")
 def list_contacts(
-    data_dir: Optional[str] = typer.Option(None, help="Data directory"),
+    data_dir: Optional[str] = None,
 ):
+
+    dd = get_data_dir(data_dir)
+
+    service = ContactService(
+        contacts_dir=(
+            dd / "contacts"
+        )
+    )
+
+    contacts = (
+        service.list_contacts()
+    )
+
+    for c in contacts:
+
+        typer.echo(c)
+
+
+# =========================================================
+# TRUST COMMANDS
+# =========================================================
+
+@app.command("trust")
+def trust_contact(
+    contact_name: str,
+    verified: bool = True,
+    data_dir: Optional[str] = None,
+):
+
+    dd = get_data_dir(data_dir)
+
+    trust = TrustService(
+        trust_dir=(
+            dd / "trust"
+        )
+    )
+
+    trust.set_verified(
+        contact_name=contact_name,
+        verified=verified,
+    )
+
+    typer.echo(
+        f"[OK] Trust updated for: {contact_name}"
+    )
+
+
+# =========================================================
+# SERVER
+# =========================================================
+
+async def run_server_async(
+    host: str,
+    port: int,
+):
+
+    event_bus = EventBus()
+
+    peer_registry = (
+        PeerRegistry()
+    )
+
+    connection_manager = (
+        ConnectionManager(
+            peer_registry=
+                peer_registry,
+        )
+    )
+
+    config = TransportServerConfig(
+        host=host,
+        port=port,
+    )
+
+    transport_server = TransportServer(
+        config=config,
+    )
+
+    # Register transport server with connection manager so
+    # connection lifecycle and packet routing are wired.
+    connection_manager.register_server(
+        server_id="server",
+        server=transport_server,
+    )
+
+    notification_service = (
+        NotificationService(
+            event_bus=event_bus,
+        )
+    )
+
+    await event_bus.start()
+
+    await notification_service.start()
+
+    typer.echo(
+        f"[OK] Secure transport server listening on ws://{host}:{port}"
+    )
+
+    # Start services and run server until interrupted (KeyboardInterrupt).
     try:
-        dd = get_data_dir(data_dir)
-        ks = KeyService(dd)
+        await transport_server.start()
 
-        contacts = ks.list_contacts()
-        if not contacts:
-            typer.echo("No contacts found.")
-            return
+    except OSError as err:
+        # Address already in use: try binding to an ephemeral port instead.
+        if getattr(err, "errno", None) in (98, 10048):
+            typer.echo(
+                "Port in use, attempting to bind to an ephemeral port...",
+            )
+            # update config to 0 (OS-assigned port) and restart
+            transport_server.config.port = 0
+            await transport_server.start()
+            # determine assigned port if available
+            try:
+                srv = transport_server.server
+                if srv and getattr(srv, "sockets", None):
+                    bound_port = srv.sockets[0].getsockname()[1]
+                    typer.echo(f"[OK] Secure transport server listening on ws://{host}:{bound_port}")
+            except Exception:
+                pass
+        else:
+            raise
 
-        for name in contacts:
-            typer.echo(name)
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        await transport_server.stop()
 
-    except Exception as exc:
-        typer.echo(f"[ERROR] List contacts failed: {exc}")
-        raise typer.Exit(code=1)
 
+@app.command("server")
+def run_server(
+    host: str = "0.0.0.0",
+    port: int = 8765,
+):
+
+    asyncio.run(
+        run_server_async(
+            host=host,
+            port=port,
+        )
+    )
+
+
+# =========================================================
+# VALIDATION
+# =========================================================
+
+@app.command("validate")
+def validate_system():
+
+    asyncio.run(
+        validation_main()
+    )
+
+
+# =========================================================
+# UI
+# =========================================================
+
+@app.command("ui")
+def run_ui():
+
+    typer.echo(
+        "[INFO] Start frontend separately:"
+    )
+
+    typer.echo(
+        "cd ui && npm run dev"
+    )
+
+
+# =========================================================
+# MAIN
+# =========================================================
 
 if __name__ == "__main__":
-    run_app()
+
+    app()

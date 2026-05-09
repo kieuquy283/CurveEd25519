@@ -5,10 +5,10 @@ import threading
 from pathlib import Path
 from typing import List, Optional
 
-from models.message_record import (
+from app.models.message_record import (
     MessageDirection,
     MessageRecord,
-    MessageStatus,
+    MessageState,
 )
 
 
@@ -306,7 +306,7 @@ class MessageStore:
         self,
         *,
         message_id: str,
-        status: MessageStatus,
+        status: MessageState,
     ) -> None:
 
         with self._lock:
@@ -442,7 +442,7 @@ class MessageStore:
                 row["direction"]
             ),
 
-            status=MessageStatus(
+            status=MessageState(
                 row["status"]
             ),
 
