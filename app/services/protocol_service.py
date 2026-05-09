@@ -30,6 +30,17 @@ from .replay_service import (
     PacketExpiredError,
     InvalidReplayMetadataError,
 )
+from .ratchet_service import (
+    RatchetService,
+)
+
+from ..storage.sqlite_session_store import (
+    SQLiteSessionStore,
+)
+
+from ..storage.sqlite_replay_cache import (
+    SQLiteReplayCache,
+)
 
 
 class ProtocolServiceError(Exception):
@@ -52,7 +63,7 @@ class ProtocolDecryptError(ProtocolServiceError):
     """Payload decryption failed."""
 
 
-class ProtocolService:
+class ProtocolService():
     """
     Secure messaging protocol orchestration layer.
 
@@ -75,12 +86,13 @@ class ProtocolService:
 
     DEFAULT_EXPIRES_IN = 300
 
-    from storage.sqlite_replay_cache import (
-        SQLiteReplayCache,
-    )
-
+    
     _replay_service = ReplayProtectionService(
         cache=SQLiteReplayCache()
+    )
+
+    _ratchet_service = RatchetService(
+        session_store=SQLiteSessionStore()
     )
 
     # =========================================================
@@ -93,6 +105,7 @@ class ProtocolService:
         *,
         sender_profile: JsonDict,
         receiver_contact: JsonDict,
+        session_id: str | None = None,
         plaintext: str | bytes,
         expires_in: int = DEFAULT_EXPIRES_IN,
         include_debug: bool = False,
@@ -144,12 +157,21 @@ class ProtocolService:
         )
 
         # =====================================================
-        # Encrypt payload
+        # Encrypt payload (use ratchet-derived message key)
         # =====================================================
+
+        state = None
+        mk = None
+
+        if session_id is not None:
+            mk, state = cls._ratchet_service.next_outbound_message_key(
+                session_id=session_id
+            )
 
         crypto_result = CryptoService.encrypt_payload(
             receiver_x25519_public_b64=receiver_x25519_public_b64,
             plaintext=plaintext_bytes,
+            message_key=(mk.key if mk is not None else None),
         )
 
         # =====================================================
@@ -187,6 +209,14 @@ class ProtocolService:
             salt_wrap_b64=crypto_result["salt_wrap_b64"],
 
             payload_nonce_b64=crypto_result["payload_nonce_b64"],
+            ratchet_pub_b64=(state.dh_public_b64 if state is not None else None),
+            message_index=(mk.index if mk is not None else None),
+            previous_chain_length=(
+                state.previous_sending_chain_length
+                if state is not None
+                else None
+            ),
+
         )
 
         header_bytes = canonical_dumps(header)
@@ -198,6 +228,7 @@ class ProtocolService:
         crypto_result = CryptoService.encrypt_payload(
             receiver_x25519_public_b64=receiver_x25519_public_b64,
             plaintext=plaintext_bytes,
+            message_key=(mk.key if mk is not None else None),
             forced_payload_nonce=b64d(
                 crypto_result["payload_nonce_b64"]
             ),
@@ -278,6 +309,7 @@ class ProtocolService:
         *,
         receiver_profile: JsonDict,
         envelope: JsonDict,
+        session_id: str | None = None,
         sender_contact: Optional[JsonDict] = None,
         verify_signature: bool = True,
         enforce_replay_protection: bool = True,
@@ -353,9 +385,7 @@ class ProtocolService:
             verified = CryptoService.verify_bytes(
                 public_key_b64=sender_pub_from_envelope,
                 data=signing_bytes,
-                signature=CryptoService._b64decode(
-                    envelope["signature"]["value"]
-                ),
+                signature=b64d(envelope["signature"]["value"]),
             )
 
             if not verified:
@@ -395,14 +425,69 @@ class ProtocolService:
 
         try:
 
-            plaintext_bytes = CryptoService.decrypt_payload(
-                receiver_x25519_private_b64=(
-                    CryptoService._get_x25519_private_key_b64(
-                        receiver_profile
-                    )
-                ),
-                envelope=envelope,
+            # -------------------------------------------------
+            # Ratchet metadata handling
+            # -------------------------------------------------
+
+            ratchet_meta = header.get("ratchet", {}) or {}
+
+            ratchet_pub_b64 = (
+                ratchet_meta.get("ratchet_public_key")
             )
+
+            # If a session is present, perform ratchet handling
+            if session_id is not None:
+
+                # If remote ratchet public has changed, perform DH ratchet rotation
+                if ratchet_pub_b64:
+
+                    try:
+                        # load current state (store-specific)
+                        current = (
+                            cls._ratchet_service.session_store
+                            .load_ratchet_state(session_id)
+                        )
+
+                    except Exception:
+                        current = None
+
+                    if (
+                        current is None
+                        or current.remote_public_b64
+                        != ratchet_pub_b64
+                    ):
+
+                        state = cls._ratchet_service.rotate_ratchet(
+                            session_id=session_id,
+                            remote_public_b64=ratchet_pub_b64,
+                        )
+
+                # Advance receiving chain and derive message key
+                mk = cls._ratchet_service.next_inbound_message_key(
+                    session_id=session_id
+                )
+
+                plaintext_bytes = CryptoService.decrypt_payload(
+                    receiver_x25519_private_b64=(
+                        CryptoService._get_x25519_private_key_b64(
+                            receiver_profile
+                        )
+                    ),
+                    envelope=envelope,
+                    message_key=(mk.key if mk is not None else None),
+                )
+
+            else:
+                # no ratchet session; normal decrypt
+                plaintext_bytes = CryptoService.decrypt_payload(
+                    receiver_x25519_private_b64=(
+                        CryptoService._get_x25519_private_key_b64(
+                            receiver_profile
+                        )
+                    ),
+                    envelope=envelope,
+                    message_key=None,
+                )
 
         except CryptoServiceError as exc:
             raise ProtocolDecryptError(

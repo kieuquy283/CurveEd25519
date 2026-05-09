@@ -5,6 +5,11 @@ from abc import ABC, abstractmethod
 from .replay_record import ReplayCacheRecord
 
 
+class ReplayCacheError(Exception):
+    """Base replay cache exception."""
+
+
+
 class BaseReplayCache(ABC):
     """
     Abstract replay cache backend.

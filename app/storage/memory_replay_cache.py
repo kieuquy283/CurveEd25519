@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, Final, List
 
-from replay_cache import BaseReplayCache
+from .base_replay_cache import BaseReplayCache, ReplayCacheError
 
 
 # =========================================================
@@ -22,8 +22,8 @@ DEFAULT_CLEANUP_INTERVAL_SECONDS: Final[int] = 60
 # Exceptions
 # =========================================================
 
-class MemoryReplayCacheError(Exception):
-    """Base replay cache exception."""
+class MemoryReplayCacheError(ReplayCacheError):
+    """Memory replay cache error."""
 
 
 class MemoryReplayCacheFullError(MemoryReplayCacheError):

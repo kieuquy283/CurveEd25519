@@ -171,6 +171,10 @@ class CryptoService:
         receiver_x25519_public_b64: str,
         plaintext: bytes,
         aad: bytes = b"",
+        message_key: bytes | None = None,
+        forced_payload_nonce: bytes | None = None,
+        forced_salt_wrap: bytes | None = None,
+        forced_ephemeral_private_key_b64: str | None = None,
     ) -> JsonDict:
         """
         Hybrid encryption primitive.
@@ -190,12 +194,25 @@ class CryptoService:
         # Payload materials
         # =================================================
 
-        payload_key = os.urandom(
-            cls.PAYLOAD_KEY_LEN
-        )
+        if message_key is None:
+            payload_key = os.urandom(
+                cls.PAYLOAD_KEY_LEN
+            )
+        else:
+            if not isinstance(message_key, bytes):
+                raise TypeError(
+                    "message_key must be bytes or None."
+                )
+            if len(message_key) != cls.PAYLOAD_KEY_LEN:
+                raise ValueError(
+                    f"message_key must be {cls.PAYLOAD_KEY_LEN} bytes."
+                )
+            payload_key = message_key
 
-        payload_nonce = generate_nonce(
-            NONCE_DOMAIN_PAYLOAD
+        payload_nonce = (
+            forced_payload_nonce
+            if forced_payload_nonce is not None
+            else generate_nonce(NONCE_DOMAIN_PAYLOAD)
         )
 
         # =================================================
@@ -203,6 +220,30 @@ class CryptoService:
         # =================================================
 
         eph = generate_ephemeral_keypair()
+
+        if forced_ephemeral_private_key_b64 is not None:
+            from ..core.x25519 import (
+                load_private_key_from_b64,
+                derive_public_key,
+                public_key_to_b64,
+            )
+
+            # validate and derive public key
+            _ = load_private_key_from_b64(
+                forced_ephemeral_private_key_b64
+            )
+            pub = public_key_to_b64(
+                derive_public_key(
+                    load_private_key_from_b64(
+                        forced_ephemeral_private_key_b64
+                    )
+                )
+            )
+
+            eph = type(eph)(
+                private_key_b64=forced_ephemeral_private_key_b64,
+                public_key_b64=pub,
+            )
 
         # =================================================
         # Shared secret
@@ -223,7 +264,9 @@ class CryptoService:
         # HKDF wrap material
         # =================================================
 
-        salt_wrap = os.urandom(16)
+        salt_wrap = (
+            forced_salt_wrap if forced_salt_wrap is not None else os.urandom(16)
+        )
 
         wrap_key, wrap_nonce = (
             cls.derive_wrap_material(
@@ -314,6 +357,7 @@ class CryptoService:
         *,
         receiver_x25519_private_b64: str,
         envelope: JsonDict,
+        message_key: bytes | None = None,
     ) -> bytes:
         """
         Hybrid decryption primitive.
@@ -384,20 +428,47 @@ class CryptoService:
         try:
 
             # =============================================
-            # Unwrap payload key
+            # Obtain payload key (either unwrap or use provided)
             # =============================================
 
-            wrap_cipher = (
-                ChaCha20Poly1305(wrap_key)
-            )
+            if message_key is None:
 
-            payload_key = (
-                wrap_cipher.decrypt(
-                    wrap_nonce,
-                    wrapped_key,
-                    aad,
+                wrap_cipher = (
+                    ChaCha20Poly1305(wrap_key)
                 )
-            )
+
+                try:
+                    payload_key = (
+                        wrap_cipher.decrypt(
+                            wrap_nonce,
+                            wrapped_key,
+                            aad,
+                        )
+                    )
+
+                except Exception:
+                    # fallback to empty AAD for legacy envelopes
+                    payload_key = (
+                        wrap_cipher.decrypt(
+                            wrap_nonce,
+                            wrapped_key,
+                            b"",
+                        )
+                    )
+
+            else:
+
+                if not isinstance(message_key, bytes):
+                    raise TypeError(
+                        "message_key must be bytes or None."
+                    )
+
+                if len(message_key) != cls.PAYLOAD_KEY_LEN:
+                    raise ValueError(
+                        f"message_key must be {cls.PAYLOAD_KEY_LEN} bytes."
+                    )
+
+                payload_key = message_key
 
             # =============================================
             # Decrypt payload
@@ -407,15 +478,51 @@ class CryptoService:
                 ChaCha20Poly1305(payload_key)
             )
 
-            plaintext = (
-                payload_cipher.decrypt(
-                    payload_nonce,
-                    ciphertext,
-                    aad,
+            try:
+                plaintext = (
+                    payload_cipher.decrypt(
+                        payload_nonce,
+                        ciphertext,
+                        aad,
+                    )
                 )
-            )
 
-            return plaintext
+                return plaintext
+
+            except Exception:
+                # Try fallback with empty AAD for legacy envelopes
+                try:
+                    if message_key is None:
+                        wrap_cipher = (
+                            ChaCha20Poly1305(wrap_key)
+                        )
+
+                        payload_key = (
+                            wrap_cipher.decrypt(
+                                wrap_nonce,
+                                wrapped_key,
+                                b"",
+                            )
+                        )
+
+                    payload_cipher = (
+                        ChaCha20Poly1305(payload_key)
+                    )
+
+                    plaintext = (
+                        payload_cipher.decrypt(
+                            payload_nonce,
+                            ciphertext,
+                            b"",
+                        )
+                    )
+
+                    return plaintext
+
+                except Exception as exc:
+                    raise DecryptionError(
+                        "Authenticated decryption failed."
+                    ) from exc
 
         except Exception as exc:
             raise DecryptionError(

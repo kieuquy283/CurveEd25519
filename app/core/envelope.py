@@ -49,10 +49,13 @@ def build_header(
     ephemeral_x25519_public_b64: str,
     ephemeral_x25519_fingerprint: str,
     salt_wrap_b64: str,
-    msg_id_b64: str,
+    message_id: str,
     payload_nonce_b64: str,
     expires_in: int = 300,
     created_at: str,
+    ratchet_pub_b64: str | None = None,
+    message_index: int | None = None,
+    previous_chain_length: int | None = None,
 ) -> JsonDict:
     """
     Tạo header chuẩn cho message envelope.
@@ -60,7 +63,7 @@ def build_header(
     header: JsonDict = {
         "version": version,
         "suite": suite,
-        "message_id": msg_id_b64,
+        "message_id": message_id,
         "expires_in": expires_in,
         "created_at": created_at,
         "sender": {
@@ -77,6 +80,11 @@ def build_header(
             "ephemeral_x25519_fingerprint": ephemeral_x25519_fingerprint,
             "salt_wrap": salt_wrap_b64,
             "payload_nonce": payload_nonce_b64,
+        },
+        "ratchet": {
+            "ratchet_public_key": ratchet_pub_b64,
+            "message_index": message_index,
+            "previous_chain_length": previous_chain_length,
         },
     }
 
@@ -226,8 +234,8 @@ def get_message_id_b64(header: JsonDict) -> str:
 def validate_header(header: JsonDict) -> None:
     if not isinstance(header, dict):
         raise EnvelopeError("Header must be a dict.")
-
-    required_top = ("version", "suite", "message_id","created_id", "expires_in", "sender", "receiver", "crypto")
+    # Minimal required top-level header fields (lenient for legacy envelopes)
+    required_top = ("message_id", "sender", "receiver", "crypto")
     for key in required_top:
         if key not in header:
             raise EnvelopeError(f"Header missing field: {key}")
@@ -243,19 +251,18 @@ def validate_header(header: JsonDict) -> None:
     if not isinstance(crypto, dict):
         raise EnvelopeError("Header field 'crypto' must be a dict.")
 
-    sender_required = ("name", "ed25519_public_key", "ed25519_fingerprint")
+    sender_required = ("name", "ed25519_public_key")
     for key in sender_required:
         if key not in sender:
             raise EnvelopeError(f"Header sender missing field: {key}")
 
-    receiver_required = ("name", "x25519_fingerprint")
+    receiver_required = ("name",)
     for key in receiver_required:
         if key not in receiver:
             raise EnvelopeError(f"Header receiver missing field: {key}")
 
     crypto_required = (
         "ephemeral_x25519_public_key",
-        "ephemeral_x25519_fingerprint",
         "salt_wrap",
         "payload_nonce",
     )
@@ -290,8 +297,8 @@ def validate_envelope(envelope: JsonDict) -> None:
     if "value" not in signature:
         raise EnvelopeError("Envelope signature missing field: value.")
 
-    if not isinstance(signature["value"], str) or not signature["value"].strip():
-        raise EnvelopeError("Envelope signature value must be a non-empty base64 string.")
+    if not isinstance(signature["value"], str):
+        raise EnvelopeError("Envelope signature value must be a base64 string.")
 
 
 def extract_meta(envelope: JsonDict) -> JsonDict:

@@ -6,9 +6,12 @@ import time
 from pathlib import Path
 from typing import Final
 
-from storage.replay_cache import BaseReplayCache
-from storage.memory_replay_cache import (
+from .base_replay_cache import (
+    BaseReplayCache,
     ReplayCacheError,
+)
+
+from .replay_record import (
     ReplayCacheRecord,
 )
 
