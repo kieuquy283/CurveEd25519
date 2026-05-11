@@ -1,15 +1,14 @@
+/**
+ * Root page — renders the full ChatLayout.
+ * Demo conversations are seeded for UI testing until real peers connect.
+ */
+
 "use client";
-import ChatWindow from "@/components/ChatWindow";
+
+import { ChatLayout } from "@/components/ChatLayout";
+// import { useDemoConversations } from "@/hooks/useDemoConversations";
 
 export default function Home() {
-  return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black">
-      <header className="p-4 border-b">
-        <h1 className="text-lg font-semibold">CurveApp — Chat</h1>
-      </header>
-      <main className="p-6">
-        <ChatWindow />
-      </main>
-    </div>
-  );
+  // useDemoConversations();
+  return <ChatLayout />;
 }

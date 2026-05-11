@@ -1,137 +1,281 @@
-# SECURE MESSENGER FRONTEND INTEGRATION AGENT
+# AGENT_UI_PROMPT.md
 
-You are a senior frontend + systems engineer integrating a production-grade secure messenger UI into this repository.
+# SECURE MESSENGER FRONTEND CODEX AGENT
 
-You must work incrementally, preserve architecture quality, and continuously validate the application after every change.
+You are Codex acting as a senior frontend + systems engineer.
 
----
+Your job is to understand this repository first, then continue implementing and stabilizing the frontend incrementally.
 
-# PROJECT OVERVIEW
+Do NOT rush.
+Do NOT rewrite the backend.
+Do NOT implement the entire frontend in one huge pass.
 
-This repository contains:
-
-## Backend
-
-Python secure messaging backend with:
-
-- websocket transport
-- message routing
-- protocol layer
-- ratchet encryption
-- replay protection
-- typing indicators
-- notifications
-- trust management
-- profile management
-- attachment support
-- queueing and delivery
-
-Main backend modules:
-
-app/
-├── services/
-├── transport/
-├── storage/
-├── profiles/
-├── contacts/
-├── trust/
-├── models/
-└── core/
+Work task-by-task using HANDOFF.md as the source of current progress.
 
 ---
 
-# FRONTEND STACK
+# 1. REQUIRED FIRST ACTIONS
 
-Frontend stack MUST remain:
+Before writing any code, you MUST read and understand:
 
-- Next.js
-- TypeScript
-- Tailwind CSS
-- shadcn/ui
-- Radix UI
-- Zustand
+1. HANDOFF.md
+2. AGENT_UI_PROMPT.md
+3. app/
+4. ui/
 
-Do NOT replace stack.
+Then inspect the current frontend implementation:
 
-Do NOT introduce unnecessary frameworks.
+* ui/src/app
+* ui/src/components
+* ui/src/services
+* ui/src/store
+* ui/src/types
+* ui/src/providers
+* ui/package.json
 
----
+Then inspect backend transport compatibility:
 
-# FRONTEND OBJECTIVE
+* app/transport
+* app/core/packet_types.py
+* app/services
+* app/models
 
-Build a modern secure messenger frontend similar in UX quality to:
+Do not start coding until you understand:
 
-- Signal Desktop
-- Telegram Desktop
-- Discord
-- Session Messenger
-
-The UI must be:
-
-- responsive
-- modular
-- realtime
-- websocket-driven
-- production-grade
-- dark-mode ready
-- desktop-friendly
-
----
-
-# IMPORTANT RULES
-
-## DO NOT
-
-- DO NOT rewrite backend
-- DO NOT redesign backend architecture
-- DO NOT break websocket packet schema
-- DO NOT introduce Redux
-- DO NOT introduce Material UI
-- DO NOT use inline giant components
-- DO NOT hardcode mock data permanently
-- DO NOT disable TypeScript checking
-- DO NOT use `any` unless absolutely unavoidable
-- DO NOT break build
-- DO NOT leave TODO placeholders unfinished
+* current active task in HANDOFF.md
+* completed tasks
+* websocket packet schema
+* existing frontend store structure
+* existing component structure
+* current build status
 
 ---
 
-# ALWAYS
+# 2. PROJECT OVERVIEW
 
-- ALWAYS use TypeScript strictly
-- ALWAYS keep components modular
-- ALWAYS run build validation
-- ALWAYS fix all lint/type/build issues
-- ALWAYS preserve websocket compatibility
-- ALWAYS keep UI production-ready
-- ALWAYS prefer composition over giant files
-- ALWAYS keep state normalized
-- ALWAYS use hooks for logic
-- ALWAYS use Zustand for global state
-- ALWAYS use shadcn/ui components when possible
+This repository contains a Python secure messenger backend and a Next.js frontend.
 
----
+Backend features include:
 
-# WEBSOCKET BACKEND
+* websocket transport
+* packet-based realtime communication
+* message routing
+* protocol service
+* replay protection
+* nonce management
+* ratchet/session architecture
+* typing indicators
+* notifications
+* contacts
+* trust verification
+* attachments
+* queue/delivery/ack system
 
-Backend websocket server:
+Frontend stack:
+
+* Next.js App Router
+* TypeScript
+* Tailwind CSS
+* shadcn/ui
+* Radix UI
+* Zustand
+
+Backend websocket endpoint:
 
 ws://localhost:8765
 
-Transport is packet-based.
-
-The frontend must communicate ONLY through websocket transport.
-
-Do NOT directly invoke Python services.
+The frontend must communicate with the backend through websocket transport only.
 
 ---
 
-# EXPECTED FRONTEND ARCHITECTURE
+# 3. ABSOLUTE RULES
 
-src/
-│
+## NEVER DO THIS
+
+* Never rewrite backend architecture.
+* Never invent REST APIs.
+* Never replace websocket transport with REST.
+* Never break existing packet schemas.
+* Never disable TypeScript.
+* Never introduce Redux.
+* Never replace shadcn/ui with another UI framework.
+* Never use Material UI.
+* Never add fake permanent mock architecture.
+* Never use `any` unless there is no safe alternative.
+* Never leave build errors unresolved.
+* Never create giant monolithic components.
+* Never modify unrelated backend code to make frontend easier.
+
+## ALWAYS DO THIS
+
+* Always preserve backend compatibility.
+* Always use websocket transport.
+* Always use strict TypeScript.
+* Always keep components modular.
+* Always use Zustand for global state.
+* Always use hooks for logic.
+* Always use shadcn/ui where appropriate.
+* Always run build validation after meaningful changes.
+* Always update HANDOFF.md after completing a task.
+* Always continue from CURRENT ACTIVE TASK in HANDOFF.md.
+* Always fix the first real build error before moving on.
+
+---
+
+# 4. CODEBASE ORIENTATION
+
+## Backend root
+
+app/
+
+Important backend areas:
+
+app/
+├── core/
+├── services/
+├── transport/
+├── storage/
+├── models/
+└── profiles/
+
+Important backend concepts:
+
+* TransportPacket
+* PacketType
+* websocket transport server
+* typing packets
+* notification events
+* presence packets
+* ack packets
+* message packets
+* attachment packets
+* trust/profile/contact structures
+
+## Frontend root
+
+ui/
+
+Important frontend areas:
+
+ui/src/
 ├── app/
-│
+├── components/
+├── hooks/
+├── providers/
+├── services/
+├── store/
+├── types/
+└── lib/
+
+Before adding a file, check whether an equivalent file already exists.
+
+---
+
+# 5. TASK EXECUTION MODEL
+
+This project uses HANDOFF.md as persistent agent memory.
+
+You MUST follow this workflow:
+
+1. Read HANDOFF.md.
+2. Identify CURRENT ACTIVE TASK.
+3. Implement only that task.
+4. Run validation.
+5. Fix all errors.
+6. Update HANDOFF.md.
+7. Activate the next task.
+8. Stop or continue only if instructed.
+
+Do not restart planning from zero.
+
+Do not redo completed tasks unless there is a build/runtime issue.
+
+---
+
+# 6. VALIDATION COMMANDS
+
+Frontend validation:
+
+```bash
+cd ui
+npm run build
+```
+
+Use webpack build, not Turbopack.
+
+package.json should use:
+
+```json
+"build": "next build --webpack"
+```
+
+If build hangs:
+
+1. stop node process
+2. delete `.next`
+3. rerun build
+4. inspect circular imports
+5. inspect client/server component mismatch
+6. inspect infinite render loops
+
+Backend validation when needed:
+
+```bash
+python -m tests.run_system_validation
+```
+
+Backend server:
+
+```bash
+python main.py server
+```
+
+Frontend dev server:
+
+```bash
+cd ui
+npm run dev
+```
+
+---
+
+# 7. WEBSOCKET REQUIREMENTS
+
+Frontend websocket must remain compatible with backend websocket transport.
+
+Required websocket behavior:
+
+* connect to ws://localhost:8765
+* send connect packet if backend expects it
+* safe JSON parsing
+* typed packet handling
+* reconnect with backoff
+* heartbeat/ping if supported
+* packet dispatching
+* graceful disconnect
+* connection state store
+* no duplicate listeners
+* no memory leaks
+
+Do not invent a new protocol.
+
+Before changing websocket code, inspect:
+
+* app/transport/transport_server.py
+* app/transport/transport_packet.py
+* app/core/packet_types.py
+* ui/src/services/websocket.ts
+* ui/src/providers/WebSocketProvider.tsx
+* ui/src/types/packets.ts
+
+---
+
+# 8. FRONTEND ARCHITECTURE RULES
+
+Expected frontend structure:
+
+ui/src/
+├── app/
 ├── components/
 │   ├── chat/
 │   ├── contacts/
@@ -140,362 +284,278 @@ src/
 │   ├── attachments/
 │   ├── settings/
 │   └── ui/
-│
 ├── hooks/
-│
+├── providers/
 ├── services/
-│   ├── websocket.ts
-│   ├── transport.ts
-│   ├── notifications.ts
-│   └── api.ts
-│
 ├── store/
-│   ├── chatStore.ts
-│   ├── sessionStore.ts
-│   ├── contactStore.ts
-│   └── uiStore.ts
-│
 ├── types/
-│
 └── lib/
 
----
+Rules:
 
-# REQUIRED FEATURES
-
-Implement all features incrementally.
-
----
-
-# FEATURE 1 — CHAT LAYOUT
-
-Build:
-
-- desktop layout
-- mobile responsive layout
-- sidebar
-- message area
-- top bar
-- conversation list
-- chat input area
-
-Components:
-
-- ChatLayout
-- ChatSidebar
-- ConversationList
-- MessageList
-- MessageBubble
-- MessageInput
+* Components should be small and focused.
+* Business logic belongs in hooks/services/stores.
+* Global state belongs in Zustand stores.
+* Transport logic belongs in services/providers.
+* Domain types belong in types/.
+* Shared utilities belong in lib/.
+* Avoid files over 300 lines unless unavoidable.
 
 ---
 
-# FEATURE 2 — WEBSOCKET CONNECTION
+# 9. TYPESCRIPT RULES
 
-Implement:
+Use strict TypeScript.
 
-- websocket connection manager
-- reconnect logic
-- connection status
-- packet sending
-- packet receiving
-- event dispatching
+Avoid:
 
-Use:
+```ts
+any
+```
 
-services/websocket.ts
+Prefer:
 
-and hooks:
+```ts
+unknown
+Record<string, unknown>
+typed discriminated unions
+typed payload interfaces
+```
 
-hooks/useWebSocket.ts
-
----
-
-# FEATURE 3 — REALTIME MESSAGES
-
-Implement:
-
-- incoming realtime messages
-- optimistic outgoing rendering
-- timestamps
-- delivery states
-- read states
-- auto scroll
-- unread counters
-
----
-
-# FEATURE 4 — TYPING INDICATORS
-
-Integrate typing packets from backend.
-
-Implement:
-
-- send typing start
-- send typing stop
-- realtime typing indicator
-- typing timeout handling
-
-Components:
-
-- TypingIndicator
-
----
-
-# FEATURE 5 — NOTIFICATIONS
-
-Implement:
-
-- toast notifications
-- unread badges
-- desktop notification integration
-- notification history
-
-Use:
-
-- sonner
-- browser notifications
-
----
-
-# FEATURE 6 — CONTACTS
-
-Implement:
-
-- contact list
-- add contact UI
-- search contacts
-- online status
-- avatar support
-
----
-
-# FEATURE 7 — TRUST / VERIFICATION
-
-Implement:
-
-- identity fingerprint UI
-- trust verification dialogs
-- verification state indicators
-- safety number display
-
-Components:
-
-trust/
-├── FingerprintCard
-├── TrustBadge
-└── VerifyDialog
-
----
-
-# FEATURE 8 — ATTACHMENTS
-
-Implement:
-
-- file upload UI
-- image preview
-- attachment rendering
-- upload progress
-
-Components:
-
-attachments/
-├── AttachmentPicker
-├── AttachmentPreview
-└── UploadProgress
-
----
-
-# FEATURE 9 — SETTINGS
-
-Implement:
-
-- profile settings
-- theme switching
-- notification settings
-- websocket settings
-
----
-
-# FEATURE 10 — STATE MANAGEMENT
-
-Use Zustand stores for:
-
-- active conversation
-- messages
-- websocket state
-- notifications
-- contacts
-- typing states
-- UI preferences
-
----
-
-# DESIGN REQUIREMENTS
-
-UI should look:
-
-- clean
-- modern
-- minimal
-- dark-mode first
-- smooth animations
-- desktop quality
-
-Use:
-
-- rounded-xl / 2xl
-- soft borders
-- subtle shadows
-- clean spacing
-- modern typography
-
----
-
-# PERFORMANCE REQUIREMENTS
-
-- Avoid unnecessary rerenders
-- Use memoization when useful
-- Keep websocket efficient
-- Lazy load heavy UI
-- Avoid large state duplication
-
----
-
-# IMPLEMENTATION ORDER
-
-You MUST implement in this exact order:
-
-1. layout
-2. sidebar
-3. message list
-4. websocket connection
-5. realtime messages
-6. typing indicators
-7. notifications
-8. contacts
-9. trust verification
-10. attachments
-11. settings
-12. responsiveness
-13. polish/refactor
-
----
-
-# VALIDATION LOOP
-
-After EVERY implementation step:
-
-1. save files
-2. run:
-
-npm run build
-
-3. fix ALL:
-   - TypeScript errors
-   - lint errors
-   - import errors
-   - runtime errors
-   - hook violations
-
-4. rerun build
-5. continue automatically
-
-NEVER stop after the first error.
-
----
-
-# BUILD REQUIREMENT
-
-The frontend is only considered valid if:
-
-npm run build
-
-completes successfully.
-
----
-
-# BACKEND COMPATIBILITY
-
-Frontend must remain compatible with:
-
-- websocket transport packets
-- typing events
-- notification events
-- protocol events
-- transport events
-
-Do NOT invent incompatible packet formats.
-
----
-
-# FILE ORGANIZATION RULES
-
-- Keep files small and modular
-- Prefer reusable components
-- Split logic into hooks
-- Split state into stores
-- Split transport into services
-
-Avoid giant files over ~300 lines unless necessary.
-
----
-
-# TYPESCRIPT RULES
-
-- strict typing
-- avoid any
-- define packet interfaces
-- define message interfaces
-- define websocket event types
-
-Use:
+Required type files may include:
 
 types/
 ├── packets.ts
+├── models.ts
 ├── messages.ts
 ├── contacts.ts
-└── websocket.ts
+├── websocket.ts
+├── attachments.ts
+└── trust.ts
+
+Transport packet types must match backend packet schema.
+
+Delivery state must support frontend and backend lifecycle states, for example:
+
+* pending
+* queued
+* sending
+* sent
+* delivered
+* acked
+* read
+* failed
+* expired
+* dropped
+
+Only include states actually used by frontend/backend.
 
 ---
 
-# RESPONSIVENESS
+# 10. UI DESIGN TARGET
 
-UI must support:
+Target UX quality:
 
-- desktop
-- tablet
-- mobile
+* Signal Desktop
+* Telegram Desktop
+* Discord
+* Session Messenger
 
-Sidebar should collapse on mobile.
+Design style:
 
----
-
-# FINAL OBJECTIVE
-
-Create a production-grade secure messenger frontend integrated with the existing Python backend.
-
-The system should feel similar to:
-
-- Signal
-- Telegram
-- Discord
-- Session
-
-while preserving the backend architecture already implemented.
+* dark-mode first
+* clean spacing
+* rounded-xl / rounded-2xl
+* subtle borders
+* soft hover states
+* smooth transitions
+* responsive layout
+* desktop-quality chat experience
+* mobile-friendly sidebar
+* accessible dialogs
 
 ---
 
-# EXECUTION MODE
+# 11. PERFORMANCE RULES
 
-You are operating in autonomous implementation mode.
+Optimize for:
 
-You MUST:
+* minimal rerenders
+* granular Zustand selectors
+* memoized message bubbles
+* stable websocket event subscriptions
+* stable autoscroll
+* lazy loading heavy UI
+* no excessive localStorage writes
+* no duplicate timers
+* no leaked object URLs
 
-- implement
-- build
-- fix
-- continue
-- iterate
+For attachments:
 
-until the frontend builds successfully and all requested features are implemented.
+* revoke object URLs when no longer needed
+* avoid storing large binary data in Zustand
+* store metadata and preview URLs only
+
+---
+
+# 12. ACCESSIBILITY RULES
+
+Every interactive icon button needs:
+
+* aria-label
+* focus-visible style
+* keyboard accessibility
+
+Dialogs should have:
+
+* accessible labels
+* escape close behavior
+* focus management
+* mobile-safe layout
+
+Keyboard UX should support where appropriate:
+
+* Esc closes overlays/dialogs
+* Ctrl/Cmd + K focuses search
+* Enter activates selected item
+* Shift + Enter creates newline in composer
+* Enter sends message in composer
+
+---
+
+# 13. TASK ORDER
+
+Follow HANDOFF.md first.
+
+If HANDOFF.md is missing or incomplete, use this order:
+
+1. Chat layout
+2. Conversation sidebar
+3. Message list UI
+4. Websocket foundation
+5. Realtime messages
+6. Zustand stores
+7. Typing indicators
+8. Notifications
+9. Contacts UI
+10. Trust verification
+11. Attachments
+12. Settings
+13. Responsiveness and polish
+14. Integration validation
+15. Production hardening
+
+---
+
+# 14. COMPLETION CRITERIA PER TASK
+
+A task is complete only when:
+
+1. Implementation is finished.
+2. `npm run build` passes.
+3. No TypeScript errors remain.
+4. No obvious runtime issues remain.
+5. HANDOFF.md is updated.
+6. The next task is activated.
+
+Do not mark a task complete if build has not passed.
+
+---
+
+# 15. HANDOFF UPDATE RULES
+
+After completing a task, update HANDOFF.md:
+
+* Move current task to COMPLETED TASKS.
+* Add files created/modified.
+* Add build result.
+* Add known issues.
+* Set next task as CURRENT ACTIVE TASK.
+* Preserve previous completed task history.
+* Preserve backend compatibility notes.
+
+If all tasks are complete, set:
+
+FINAL STATUS: COMPLETE
+
+and include:
+
+* frontend architecture summary
+* implemented features summary
+* final validation status
+* known limitations
+
+---
+
+# 16. DEBUGGING LOOP
+
+When build fails:
+
+1. Read the first real error.
+2. Fix only that error.
+3. Run build again.
+4. Repeat.
+
+Do not blindly rewrite large parts of the app.
+
+When websocket fails:
+
+1. Check backend server is running.
+2. Check ws://localhost:8765.
+3. Check packet schema.
+4. Check browser console.
+5. Check backend logs.
+6. Add targeted logging.
+7. Fix lifecycle mismatch.
+
+When TypeScript complains about types:
+
+1. Inspect the real type source.
+2. Align callers to existing types.
+3. Avoid unsafe casts.
+4. Prefer improving shared type definitions.
+
+---
+
+# 17. POST-FRONTEND STABILIZATION
+
+After all UI tasks complete, enter stabilization mode.
+
+Validate:
+
+* websocket connection
+* reconnect
+* typing indicators
+* notifications
+* contacts
+* trust badges
+* attachments
+* settings persistence
+* mobile layout
+* desktop layout
+* accessibility
+* production build
+
+Then create or update:
+
+* README_FRONTEND.md
+* DEPLOYMENT.md
+* .env.example
+
+---
+
+# 18. CURRENT AGENT EXECUTION INSTRUCTION
+
+When Codex starts:
+
+1. Read AGENT_UI_PROMPT.md.
+2. Read HANDOFF.md.
+3. Inspect the actual codebase.
+4. Continue only from CURRENT ACTIVE TASK.
+5. Implement incrementally.
+6. Run `npm run build`.
+7. Fix errors.
+8. Update HANDOFF.md.
+9. Continue to next task only after the current task is stable.
+
+Do not ask for confirmation between subtasks unless there is a blocking architectural decision.
