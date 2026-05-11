@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from app.api.conversation_api import router as conversation_router
 
 from app.profiles.profile_service import (
     ProfileService,
@@ -144,13 +145,13 @@ def create_profile(
 
     profile = (
         service.create_profile(
-            name=name,
+            username=name,
             save=True,
         )
     )
 
     typer.echo(
-        f"[OK] Created profile: {profile['name']}"
+        f"[OK] Created profile: {profile['username']}"
     )
 
 
@@ -391,3 +392,4 @@ def run_ui():
 if __name__ == "__main__":
 
     app()
+    app.include_router(conversation_router)

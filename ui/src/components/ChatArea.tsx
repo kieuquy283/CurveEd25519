@@ -7,12 +7,14 @@ import { useChatStore } from "@/store/useChatStore";
 import { MessageList } from "@/components/MessageList";
 import { MessageComposer } from "@/components/MessageComposer";
 import { ChatHeader } from "@/components/ChatHeader";
+import { ChatMessage } from "@/types/models";
 
 interface ChatAreaProps {
   conversationId: string;
   onBack?: () => void;
 }
 
+const EMPTY_MESSAGES: ChatMessage[] = [];
 export function ChatArea({
   conversationId,
   onBack,
@@ -25,7 +27,7 @@ export function ChatArea({
     conversations.get(conversationId);
 
   const messages = useChatStore((s) =>
-    s.getMessages(conversationId)
+    s.messages.get(conversationId) ?? EMPTY_MESSAGES
   );
 
   if (!activeConversation) {

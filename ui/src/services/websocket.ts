@@ -1,12 +1,5 @@
 /**
  * WebSocket service — singleton transport layer.
- *
- * Integrates with backend TransportServer at ws://localhost:8765.
- * Handles: connection lifecycle, AUTH handshake, reconnect with
- * exponential backoff, heartbeat PING/PONG, typed packet dispatch.
- *
- * Backend expects CONNECT packet as first message on connection
- * (maps to TransportServer._handle_connection AUTH check).
  */
 
 import {
@@ -16,15 +9,13 @@ import {
   buildConnectPacket,
   buildTypingPacket,
   buildAckPacket,
-  buildPacketId,
-  buildTimestamp,
 } from "@/types/packets";
+
 import { useWebSocketStore } from "@/store/useWebSocketStore";
+import { useChatStore } from "@/store/useChatStore";
+import { decryptIncomingMessage } from "@/services/conversationCrypto";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type PacketHandler =
-  (packet: TransportPacket) => Promise<void> | void;
+type PacketHandler = (packet: TransportPacket) => Promise<void> | void;
 type ConnectionHandler = () => Promise<void> | void;
 
 interface WebSocketServiceConfig {
@@ -47,8 +38,6 @@ const DEFAULT_CONFIG: WebSocketServiceConfig = {
   connectTimeoutMs: 10_000,
 };
 
-// ─── WebSocket Service ───────────────────────────────────────────────────────
-
 class WebSocketService {
   private socket: WebSocket | null = null;
   private config: WebSocketServiceConfig;
@@ -60,10 +49,7 @@ class WebSocketService {
   private isConnected = false;
   private shouldReconnect = true;
 
-  // Per-type packet handlers
   private readonly packetHandlers = new Map<string, Set<PacketHandler>>();
-
-  // Lifecycle handlers
   private readonly connectionHandlers: ConnectionHandler[] = [];
   private readonly disconnectionHandlers: ConnectionHandler[] = [];
 
@@ -71,8 +57,6 @@ class WebSocketService {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.reconnectDelay = this.config.reconnectBaseDelayMs;
   }
-
-  // ─── Public API ────────────────────────────────────────────────────────────
 
   get peerId(): string {
     return this.config.localPeerId;
@@ -85,6 +69,8 @@ class WebSocketService {
   async connect(): Promise<void> {
     if (this.isConnected && this.socket?.readyState === WebSocket.OPEN) return;
 
+    this.shouldReconnect = true;
+
     const store = useWebSocketStore.getState();
     store.setConnecting(true);
     store.setError(null);
@@ -93,7 +79,6 @@ class WebSocketService {
       try {
         this.socket = new WebSocket(this.config.url);
 
-        // Connection timeout guard
         this.connectTimeoutTimer = setTimeout(() => {
           if (this.socket?.readyState !== WebSocket.OPEN) {
             this.socket?.close();
@@ -104,7 +89,7 @@ class WebSocketService {
         }, this.config.connectTimeoutMs);
 
         this.socket.onopen = async () => {
-          this._clearTimer("connect");
+          this.clearConnectTimer();
 
           this.isConnected = true;
           this.reconnectAttempts = 0;
@@ -115,64 +100,72 @@ class WebSocketService {
           store.setError(null);
           store.setLastConnectedAt(new Date().toISOString());
 
-          console.info("[WS] Connected to", this.config.url);
+          await this.sendConnectHandshake();
+          this.startHeartbeat();
 
-          // Send CONNECT packet (AUTH handshake expected by TransportServer)
-          await this._sendConnectHandshake();
-
-          // Start heartbeat
-          this._startHeartbeat();
-
-          // Notify listeners
-          for (const h of this.connectionHandlers) {
-            try { await h(); } catch (e) { console.error("[WS] connection handler:", e); }
+          for (const handler of this.connectionHandlers) {
+            try {
+              await handler();
+            } catch (error) {
+              console.error("[WS] connection handler error:", error);
+            }
           }
 
           resolve();
         };
 
-        this.socket.onmessage = (event: MessageEvent) => {
-          this._handleRawMessage(event.data as string);
+        this.socket.onmessage = async (event: MessageEvent) => {
+          await this.handleRawMessage(event.data as string);
         };
 
         this.socket.onclose = () => {
-          this._clearTimer("connect");
+          this.clearConnectTimer();
           this.isConnected = false;
+
           store.setConnected(false);
-          this._stopHeartbeat();
+          store.setConnecting(false);
 
-          console.info("[WS] Disconnected");
+          this.stopHeartbeat();
 
-          for (const h of this.disconnectionHandlers) {
-            try { h(); } catch { /* ignore */ }
+          for (const handler of this.disconnectionHandlers) {
+            try {
+              handler();
+            } catch {
+              // ignore
+            }
           }
 
           if (this.shouldReconnect) {
-            this._scheduleReconnect();
+            this.scheduleReconnect();
           }
         };
 
         this.socket.onerror = (event: Event) => {
-          this._clearTimer("connect");
-          const msg = "WebSocket error";
-          console.error("[WS] Error:", event);
-          store.setError(msg);
+          this.clearConnectTimer();
+
+          console.error("[WS] error:", event);
+
+          store.setError("WebSocket error");
           store.setConnecting(false);
-          reject(new Error(msg));
+
+          reject(new Error("WebSocket error"));
         };
-      } catch (err) {
+      } catch (error) {
         store.setConnecting(false);
-        store.setError(err instanceof Error ? err.message : "Connection failed");
-        reject(err);
+        store.setError(
+          error instanceof Error ? error.message : "Connection failed"
+        );
+        reject(error);
       }
     });
   }
 
   async disconnect(): Promise<void> {
     this.shouldReconnect = false;
-    this._stopHeartbeat();
-    this._clearTimer("reconnect");
-    this._clearTimer("connect");
+
+    this.stopHeartbeat();
+    this.clearReconnectTimer();
+    this.clearConnectTimer();
 
     if (this.socket) {
       this.socket.close();
@@ -181,163 +174,225 @@ class WebSocketService {
 
     this.isConnected = false;
     useWebSocketStore.getState().setConnected(false);
-    console.info("[WS] Disconnected (intentional)");
   }
 
-  /** Send any TransportPacket to the backend. */
-  async sendPacket<T extends object>(
-    packet: TransportPacket<T>
-  ): Promise<void> {
+  async sendPacket<T extends object>(packet: TransportPacket<T>): Promise<void> {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       throw new Error("WebSocket not connected");
     }
-    const json = JSON.stringify(packet);
-    this.socket.send(json);
-    console.debug("[WS] →", packet.packet_type, packet.packet_id.slice(0, 8));
+
+    this.socket.send(JSON.stringify(packet));
   }
 
-  /** Subscribe to packets of a specific type. Returns unsubscribe fn. */
-  onPacket<T extends object = Record<string, unknown>>(
+  onPacket(
     packetType: PacketType | string,
     handler: PacketHandler
   ): () => void {
     const key = String(packetType);
+
     if (!this.packetHandlers.has(key)) {
       this.packetHandlers.set(key, new Set());
     }
+
     this.packetHandlers.get(key)!.add(handler);
-    return () => this.packetHandlers.get(key)?.delete(handler);
+
+    return () => {
+      this.packetHandlers.get(key)?.delete(handler);
+    };
   }
 
-  /** Subscribe to connection established event. */
   onConnected(handler: ConnectionHandler): () => void {
     this.connectionHandlers.push(handler);
+
     return () => {
-      const i = this.connectionHandlers.indexOf(handler);
-      if (i !== -1) this.connectionHandlers.splice(i, 1);
+      const index = this.connectionHandlers.indexOf(handler);
+      if (index !== -1) this.connectionHandlers.splice(index, 1);
     };
   }
 
-  /** Subscribe to disconnection event. */
   onDisconnected(handler: ConnectionHandler): () => void {
     this.disconnectionHandlers.push(handler);
+
     return () => {
-      const i = this.disconnectionHandlers.indexOf(handler);
-      if (i !== -1) this.disconnectionHandlers.splice(i, 1);
+      const index = this.disconnectionHandlers.indexOf(handler);
+      if (index !== -1) this.disconnectionHandlers.splice(index, 1);
     };
   }
 
-  /** Send a TYPING_START or TYPING_STOP packet. */
   async sendTypingStart(senderId: string, receiverId: string): Promise<void> {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
     const packet = buildTypingPacket(senderId, receiverId, true);
     await this.sendPacket(packet);
   }
 
   async sendTypingStop(senderId: string, receiverId: string): Promise<void> {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
     const packet = buildTypingPacket(senderId, receiverId, false);
     await this.sendPacket(packet);
   }
 
-  /** Check if socket is currently open. */
-  connected(): boolean {
-    return this.isConnected && this.socket?.readyState === WebSocket.OPEN;
+  private async sendConnectHandshake(): Promise<void> {
+    const packet = buildConnectPacket(this.config.localPeerId);
+    await this.sendPacket(packet);
   }
 
-  // ─── Private ───────────────────────────────────────────────────────────────
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
 
-  private async _sendConnectHandshake(): Promise<void> {
-    try {
-      const packet = buildConnectPacket(this.config.localPeerId);
-      await this.sendPacket(packet);
-      console.debug("[WS] AUTH/CONNECT handshake sent");
-    } catch (err) {
-      console.warn("[WS] Failed to send CONNECT handshake:", err);
-    }
-  }
-
-  private _handleRawMessage(raw: string): void {
-    let packet: TransportPacket<Record<string, unknown>>;
-    try {
-      packet = JSON.parse(raw) as TransportPacket;
-    } catch (err) {
-      console.warn("[WS] Invalid JSON from server:", err);
-      return;
-    }
-
-    const type = String(packet.packet_type);
-    console.debug("[WS] ←", type, packet.packet_id?.slice(0, 8) ?? "?");
-
-    // Internal: handle PONG silently
-    if (type === PacketType.PONG) return;
-
-    // Dispatch to registered handlers
-    const handlers = this.packetHandlers.get(type);
-    if (handlers && handlers.size > 0) {
-      for (const handler of handlers) {
-        Promise.resolve(handler(packet)).catch((e) =>
-          console.error(`[WS] handler error for ${type}:`, e)
-        );
+    this.heartbeatTimer = setInterval(async () => {
+      try {
+        const packet = buildPingPacket(this.config.localPeerId);
+        await this.sendPacket(packet);
+      } catch (error) {
+        console.error("[WS] heartbeat failed:", error);
       }
-    }
-  }
-
-  private _startHeartbeat(): void {
-    this._stopHeartbeat();
-    this.heartbeatTimer = setInterval(() => {
-      if (!this.connected()) return;
-      const ping = buildPingPacket(this.config.localPeerId);
-      this.sendPacket(ping).catch((e) =>
-        console.warn("[WS] Heartbeat PING failed:", e)
-      );
     }, this.config.heartbeatIntervalMs);
   }
 
-  private _stopHeartbeat(): void {
-    if (this.heartbeatTimer !== null) {
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
   }
 
-  private _scheduleReconnect(): void {
+  private async handleRawMessage(raw: string): Promise<void> {
+    try {
+      const packet = JSON.parse(raw) as TransportPacket;
+
+      if (packet.packet_type === PacketType.MESSAGE) {
+        await this.handleIncomingEncryptedMessage(packet);
+      }
+
+      if (packet.requires_ack) {
+        await this.sendAck(packet);
+      }
+
+      const handlers = this.packetHandlers.get(String(packet.packet_type));
+
+      if (handlers) {
+        for (const handler of handlers) {
+          try {
+            await handler(packet);
+          } catch (error) {
+            console.error("[WS] packet handler error:", error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[WS] failed to handle message:", error);
+    }
+  }
+
+  private async handleIncomingEncryptedMessage(
+    packet: TransportPacket<any>
+  ): Promise<void> {
+    try {
+      if (!packet.payload?.envelope) {
+        return;
+      }
+
+      const plaintext = await decryptIncomingMessage({
+        receiver: this.config.localPeerId,
+        sender: packet.sender_id || "unknown",
+        envelope: packet.payload.envelope,
+      });
+
+      const chatStore = useChatStore.getState();
+      const conversationId = packet.sender_id || "unknown";
+      const existingConversation =
+        chatStore.conversations.get(conversationId);
+
+      if (!existingConversation) {
+        chatStore.addConversation({
+          id: conversationId,
+          peerId: packet.sender_id,
+          peerName: packet.sender_id,
+          createdAt: packet.created_at || new Date().toISOString(),
+          lastMessageAt: packet.created_at || new Date().toISOString(),
+          unreadCount: 1,
+          isOnline: true,
+          isMuted: false,
+          encrypted: true,
+        });
+      } else {
+        chatStore.updateConversation(conversationId, {
+          lastMessageAt: packet.created_at,
+          unreadCount: (existingConversation.unreadCount || 0) + 1,
+        });
+      }
+
+      chatStore.addMessage({
+        id: packet.packet_id,
+        conversationId,
+        from: packet.sender_id,
+        to: packet.receiver_id || this.config.localPeerId,
+        text: plaintext,
+        timestamp: packet.created_at || new Date().toISOString(),
+        status: "delivered",
+      });
+    } catch (error) {
+      console.error("[WS] failed to decrypt incoming message:", error);
+    }
+  }
+
+  private async sendAck(packet: TransportPacket): Promise<void> {
+    try {
+      const ack = buildAckPacket(
+        this.config.localPeerId,
+        packet.sender_id,
+        packet.packet_id
+      );
+
+      await this.sendPacket(ack);
+    } catch (error) {
+      console.error("[WS] failed to send ACK:", error);
+    }
+  }
+
+  private scheduleReconnect(): void {
+    const store = useWebSocketStore.getState();
+
     if (this.reconnectAttempts >= this.config.reconnectMaxAttempts) {
-      useWebSocketStore.getState().setError("Max reconnect attempts reached");
+      store.setError("Reconnect attempts exceeded");
+      store.setConnecting(false);
       return;
     }
 
-    this.reconnectAttempts++;
-    const store = useWebSocketStore.getState();
+    this.reconnectAttempts += 1;
     store.setReconnectAttempts(this.reconnectAttempts);
+    store.setConnecting(true);
 
-    console.info(`[WS] Reconnecting in ${this.reconnectDelay}ms (attempt ${this.reconnectAttempts})`);
+    const delay = Math.min(
+      this.reconnectDelay,
+      this.config.reconnectMaxDelayMs
+    );
 
     this.reconnectTimer = setTimeout(() => {
-      if (this.shouldReconnect) {
-        this.connect().catch((e) =>
-          console.error("[WS] Reconnect failed:", e)
-        );
-      }
-    }, this.reconnectDelay);
+      this.connect().catch((error) => {
+        console.error("[WS] reconnect failed:", error);
+      });
+    }, delay);
 
-    // Exponential backoff
     this.reconnectDelay = Math.min(
       this.reconnectDelay * 2,
       this.config.reconnectMaxDelayMs
     );
   }
 
-  private _clearTimer(type: "reconnect" | "connect"): void {
-    if (type === "reconnect" && this.reconnectTimer !== null) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    if (type === "connect" && this.connectTimeoutTimer !== null) {
+  private clearConnectTimer(): void {
+    if (this.connectTimeoutTimer) {
       clearTimeout(this.connectTimeoutTimer);
       this.connectTimeoutTimer = null;
     }
   }
-}
 
-// ─── Singleton ───────────────────────────────────────────────────────────────
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+}
 
 export const websocketService = new WebSocketService();

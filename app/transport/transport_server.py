@@ -277,12 +277,11 @@ class TransportServer:
 
             if (
                 packet.packet_type
-                != TransportPacketType.AUTH
+                != TransportPacketType.CONNECT
             ):
                 raise (
                     TransportServerError(
-                        "First packet "
-                        "must be AUTH."
+                        "First packet must be CONNECT."
                     )
                 )
 

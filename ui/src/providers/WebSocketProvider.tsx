@@ -34,8 +34,24 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         const chatStore = useChatStore.getState();
         const payload = packet.payload as Partial<MessagePayload>;
         const envelope = payload.envelope ?? {};
-        const text =
-          typeof envelope.text === "string" ? envelope.text : "";
+        const rawText = typeof envelope.text === "string" ? envelope.text : "";
+        let text = rawText;
+        let file;
+        try {
+          const parsed = JSON.parse(rawText);
+          if (parsed && parsed.type === "file") {
+            // treat as file message
+            text = "";
+            file = {
+              filename: parsed.filename,
+              mimeType: parsed.mime_type || parsed.mimeType,
+              size: parsed.size,
+              content_b64: parsed.content_b64,
+            };
+          }
+        } catch {
+          // not JSON, leave as text
+        }
 
         const conversationId = packet.sender_id;
 
@@ -45,6 +61,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           from: packet.sender_id,
           to: packet.receiver_id,
           text,
+          type: file ? "file" : "text",
+          file,
+          envelope: Object.keys(envelope || {}).length ? envelope : undefined,
           timestamp: packet.created_at ?? new Date().toISOString(),
           status: "delivered",
           packetId: packet.packet_id,

@@ -38,6 +38,10 @@ class TransportPacketType(str, Enum):
     # Core messaging
     MESSAGE = "message"
 
+    # Connection
+    CONNECT = "connect"
+    DISCONNECT = "disconnect"
+
     # ACK flow
     ACK = "ack"
 

@@ -1,0 +1,38 @@
+﻿{
+    "ok":  true,
+    "envelope":  {
+                     "header":  {
+                                    "version":  1,
+                                    "suite":  "X25519+HKDF-SHA256+ChaCha20-Poly1305+Ed25519",
+                                    "message_id":  "168ae27c-e5da-41ba-995b-6a2bcd134289",
+                                    "expires_in":  300,
+                                    "created_at":  "2026-05-11T15:44:18Z",
+                                    "sender":  {
+                                                   "name":  "unknown",
+                                                   "ed25519_public_key":  "kvTlBVhZx7LsIl87LonDmT5XQpshPp1LJcv81lxG3QI=",
+                                                   "ed25519_fingerprint":  "63ea763ab9cec0de"
+                                               },
+                                    "receiver":  {
+                                                     "name":  "unknown",
+                                                     "x25519_fingerprint":  "3fd182c8b1af206c"
+                                                 },
+                                    "crypto":  {
+                                                   "ephemeral_x25519_public_key":  "pCJ9agh7VZLrpiXpXxtseLsC0gPBRpv3+smn3sh0m2o=",
+                                                   "ephemeral_x25519_fingerprint":  "6c716e6f8867a682",
+                                                   "salt_wrap":  "M2nUwvah/uvjTZegPO1iOQ==",
+                                                   "payload_nonce":  "LEif9lwu6D3yuqBS"
+                                               },
+                                    "ratchet":  {
+                                                    "ratchet_public_key":  null,
+                                                    "message_index":  null,
+                                                    "previous_chain_length":  null
+                                                }
+                                },
+                     "wrapped_key":  "M/ikHrqacjSmBGzEnNsurcrRfdJRbOeQzN06LMdahZwCKgLZbETt46mFAO6nsz/J",
+                     "ciphertext":  "sbKFpL43P/fA9b+JR8wSbSgdWmIZJCdtBmYm",
+                     "signature":  {
+                                       "algorithm":  "Ed25519",
+                                       "value":  "0bmmq4Ek2jSJ7i7NduR/vfq++yvA8vPYX1vvEfvBf+OZs3PBqJxwwBhys2SeeB/nFrlou6VITxzyARIRPaiiDg=="
+                                   }
+                 }
+}

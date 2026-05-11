@@ -5,11 +5,12 @@
 
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { ChatArea } from "@/components/ChatArea";
 import { useChatStore } from "@/store/useChatStore";
 import { cn } from "@/lib/utils";
+import { websocketService } from "@/services/websocket";
 
 export function ChatLayout() {
   const activeConversationId = useChatStore((s) => s.activeConversationId);

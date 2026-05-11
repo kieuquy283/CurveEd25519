@@ -11,7 +11,7 @@ interface AttachmentStore {
 
   addLocalAttachment: (a: Attachment) => void;
   setProgress: (id: string, p: number) => void;
-  markUploaded: (id: string, url?: string) => void;
+  markUploaded: (id: string, url?: string, metadata?: Record<string, any>) => void;
   getAttachment: (id: string) => Attachment | undefined;
   reset: () => void;
 }
@@ -35,12 +35,12 @@ export const useAttachmentStore = create<AttachmentStore>()(
         return { uploadProgress: m };
       }),
 
-    markUploaded: (id, url) =>
+    markUploaded: (id, url, metadata) =>
       set((state) => {
         const m = new Map(state.attachments);
         const a = m.get(id);
         if (a) {
-          m.set(id, { ...a, uploaded: true, url: url ?? a.url });
+          m.set(id, { ...a, uploaded: true, url: url ?? a.url, metadata: { ...(a.metadata || {}), ...(metadata || {}) } });
         }
         const p = new Map(state.uploadProgress);
         p.delete(id);

@@ -21,6 +21,23 @@ export interface ChatMessage {
 
   text: string;
 
+  /** message type: 'text' or 'file' */
+  type?: "text" | "file";
+
+  /** File payload when `type === 'file'` */
+  file?: {
+    filename: string;
+    mimeType: string;
+    size: number;
+    content_b64?: string; // optional: present only for local/decrypted messages
+  };
+
+  /** Raw envelope when message was received/sent (encrypted envelope JSON) */
+  envelope?: any;
+
+  cryptoDebug?: unknown;
+  cryptoDirection?: "encrypt" | "decrypt";
+
   timestamp: string;
 
   /**
@@ -60,15 +77,17 @@ export interface Conversation {
 
   unreadCount: number;
 
-  isOnline: boolean;
+  isOnline?: boolean;
 
-  isMuted: boolean;
+  isMuted?: boolean;
 
   isArchived?: boolean;
 
   isPinned?: boolean;
 
   createdAt: string;
+
+  encrypted?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -222,6 +241,7 @@ export interface Attachment {
   uploaded: boolean;
 
   uploadProgress?: number;
+  metadata?: Record<string, any>;
 }
 
 // ─────────────────────────────────────────────────────────────

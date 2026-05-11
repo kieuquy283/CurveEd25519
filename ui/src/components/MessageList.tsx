@@ -4,7 +4,7 @@
 
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useMemo, useEffect, useRef } from "react";
 import { ChatMessage } from "@/types/models";
 import { MessageBubble } from "@/components/MessageBubble";
 import { TypingIndicator } from "@/components/TypingIndicator";
@@ -15,12 +15,22 @@ interface MessageListProps {
   conversationId: string;
 }
 
+const EMPTY_TYPING_PEERS: string[] = [];
 export function MessageList({
   messages,
   conversationId,
 }: MessageListProps) {
   const scrollEndRef = useRef<HTMLDivElement>(null);
-  const typingPeers = useTypingStore((s) => s.getTypingPeers(conversationId));
+
+  const typingPeersMap = useTypingStore((s) => s.typingPeers);
+
+  const typingPeers = useMemo(() => {
+    const now = Date.now();
+
+    return Array.from(typingPeersMap.values())
+      .filter((typing) => now < typing.expiresAt)
+      .map((typing) => typing.peerId);
+  }, [typingPeersMap]);
 
   // Auto-scroll to bottom only when user is near bottom
   useEffect(() => {
