@@ -28,7 +28,7 @@ class EmailService:
             self.port = 0
         self.username = (os.getenv("SMTP_USERNAME") or "").strip()
         self.password = (os.getenv("SMTP_PASSWORD") or "").strip()
-        self.sender = (os.getenv("SMTP_FROM") or self.email_from).strip()
+        self.sender = (os.getenv("SMTP_FROM") or "").strip()
         self.use_tls = (os.getenv("SMTP_USE_TLS") or "true").strip().lower() in {
             "1",
             "true",
@@ -143,6 +143,11 @@ class EmailService:
             return False
 
     def _send_via_resend(self, *, to_email: str, subject: str, body_text: str) -> bool:
+        _log(
+            "resend send attempt "
+            f"provider={self.provider} email_from={self.email_from} recipient={to_email} "
+            f"has_resend_api_key={bool(self.resend_api_key)}"
+        )
         payload = {
             "from": self.email_from,
             "to": [to_email],
@@ -157,11 +162,13 @@ class EmailService:
             headers={
                 "Authorization": f"Bearer {self.resend_api_key}",
                 "Content-Type": "application/json",
+                "User-Agent": "CurveEd25519/1.0",
             },
         )
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
                 status_code = getattr(resp, "status", 0)
+                _log(f"resend response status={status_code} recipient={to_email}")
                 if int(status_code) < 200 or int(status_code) >= 300:
                     self.last_error_class = "ResendHTTPError"
                     self.last_error = f"Unexpected status {status_code}"
@@ -173,8 +180,19 @@ class EmailService:
             _log(f"send_code_email success to={to_email} subject={subject}")
             return True
         except urllib.error.HTTPError as exc:
+            error_body = ""
+            try:
+                error_body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                error_body = ""
             self.last_error_class = "ResendHTTPError"
-            self.last_error = f"HTTP {exc.code}: {exc.reason}"
+            if error_body:
+                self.last_error = f"HTTP {exc.code}: {exc.reason} - {error_body}"
+            else:
+                self.last_error = f"HTTP {exc.code}: {exc.reason}"
+            _log(
+                f"resend response status={exc.code} recipient={to_email} body={error_body or '<empty>'}"
+            )
             _log(
                 f"send_code_email failed to={to_email} subject={subject} "
                 f"error_class={self.last_error_class} error={self.last_error}"

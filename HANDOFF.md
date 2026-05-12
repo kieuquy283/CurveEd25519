@@ -1200,3 +1200,50 @@ The same `EmailService` is used by and now supports Resend for:
 - `RESEND_API_KEY=<your resend key>`
 - `EMAIL_FROM=<verified sender/domain on Resend>`
 - `APP_ENV=production`
+
+## 2026-05-12 - Resend 403 Focused Fix
+
+### Root-cause oriented fixes
+- Ensured Resend path reads and uses exactly:
+  - `EMAIL_PROVIDER`
+  - `RESEND_API_KEY`
+  - `EMAIL_FROM`
+- Ensured Resend sender uses `EMAIL_FROM` exactly (no fallback override from `SMTP_FROM`).
+- Kept SMTP path separate and only used when `EMAIL_PROVIDER=smtp`.
+
+### Resend HTTP request alignment
+- Resend send now uses:
+  - `POST https://api.resend.com/emails`
+  - `Authorization: Bearer <RESEND_API_KEY>`
+  - `Content-Type: application/json`
+  - `User-Agent: CurveEd25519/1.0`
+- JSON payload shape:
+  - `from`
+  - `to` (array)
+  - `subject`
+  - `text`
+
+### Safe debug logging added
+- Logs now include:
+  - provider
+  - email_from
+  - recipient
+  - has_resend_api_key
+  - Resend status code
+  - Resend response body on HTTP error
+- No API key is logged.
+
+### API diagnostics
+- `/api/auth/email-config` already returns:
+  - `provider`
+  - `email_from`
+  - `has_resend_api_key`
+  - `app_env`
+- `/api/auth/test-email` uses the same `EmailService.send_code_email()` path as registration.
+- For non-2xx Resend errors, safe response details are propagated via existing `error` field.
+
+### Files changed
+- `app/services/email_service.py`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
