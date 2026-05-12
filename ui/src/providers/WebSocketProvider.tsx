@@ -23,6 +23,7 @@ import {
 } from "@/types/packets";
 
 import { ChatMessage } from "@/types/models";
+import { saveConversationMessage } from "@/services/chatHistory";
 
 interface ParsedAttachment {
   id: string;
@@ -210,6 +211,10 @@ export function WebSocketProvider({
           parseIncomingEnvelope(plaintext);
 
         const conversationId = packet.sender_id;
+        const currentUser =
+          (useAuthStore.getState().currentUser?.id ||
+            useAuthStore.getState().currentUser?.email ||
+            packet.receiver_id) ?? packet.receiver_id;
 
         const message: ChatMessage = {
           id: packet.packet_id,
@@ -245,6 +250,35 @@ export function WebSocketProvider({
         };
 
         chatStore.addMessage(message);
+        chatStore.addConversation({
+          id: conversationId,
+          peerId: packet.sender_id,
+          peerName: packet.sender_id,
+          createdAt: packet.created_at ?? new Date().toISOString(),
+          lastMessageAt: packet.created_at ?? new Date().toISOString(),
+          unreadCount: 0,
+          encrypted: true,
+        });
+
+        try {
+          await saveConversationMessage(conversationId, {
+            sender_email: packet.sender_id,
+            receiver_email: currentUser,
+            packet_id: packet.packet_id,
+            message_type: parsedEnvelope.type,
+            ciphertext_envelope: envelope,
+            plaintext_preview: parsedEnvelope.text.slice(0, 200),
+            attachment_json:
+              parsedEnvelope.attachments.length > 0
+                ? (parsedEnvelope.attachments[0] as unknown as Record<string, unknown>)
+                : undefined,
+            crypto_debug:
+              (payload.debug as Record<string, unknown> | undefined) || undefined,
+            status: "delivered",
+          });
+        } catch (persistError) {
+          console.warn("[WebSocketProvider] saveConversationMessage failed:", persistError);
+        }
 
         const activeId =
           chatStore.activeConversationId;

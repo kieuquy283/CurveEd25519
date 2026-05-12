@@ -13,6 +13,7 @@ interface NotificationStore {
   addNotification: (
     notification: Omit<AppNotification, "id" | "createdAt" | "dismissed">
   ) => string;
+  upsertNotification: (notification: AppNotification) => void;
   removeNotification: (id: string) => void;
   clearNotifications: () => void;
   markAsRead: (id: string) => void;
@@ -45,6 +46,41 @@ export const useNotificationStore = create<NotificationStore>()(
 
         return id;
       },
+
+      upsertNotification: (notification) =>
+        set((state) => {
+          const existingIdx = state.notifications.findIndex(
+            (n) => n.id === notification.id
+          );
+          const existingHistoryIdx = state.history.findIndex(
+            (n) => n.id === notification.id
+          );
+
+          const nextNotifications = [...state.notifications];
+          if (existingIdx >= 0) {
+            nextNotifications[existingIdx] = {
+              ...nextNotifications[existingIdx],
+              ...notification,
+            };
+          } else {
+            nextNotifications.push(notification);
+          }
+
+          const nextHistory = [...state.history];
+          if (existingHistoryIdx >= 0) {
+            nextHistory[existingHistoryIdx] = {
+              ...nextHistory[existingHistoryIdx],
+              ...notification,
+            };
+          } else {
+            nextHistory.push(notification);
+          }
+
+          return {
+            notifications: nextNotifications,
+            history: nextHistory.slice(-1000),
+          };
+        }),
 
       removeNotification: (id) =>
         set((state) => ({

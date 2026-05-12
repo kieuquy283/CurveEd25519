@@ -167,8 +167,11 @@ export const useChatStore = create<ChatStore>()(
             newMessages.get(message.conversationId) || [];
 
           const exists = convMessages.some((m) => m.id === message.id);
+          const existsByPacket =
+            Boolean(message.packetId) &&
+            convMessages.some((m) => m.packetId && m.packetId === message.packetId);
 
-          if (!exists) {
+          if (!exists && !existsByPacket) {
             newMessages.set(message.conversationId, [
               ...convMessages,
               message,
@@ -197,8 +200,11 @@ export const useChatStore = create<ChatStore>()(
               newMessages.get(message.conversationId) || [];
 
             const exists = convMessages.some((m) => m.id === message.id);
+            const existsByPacket =
+              Boolean(message.packetId) &&
+              convMessages.some((m) => m.packetId && m.packetId === message.packetId);
 
-            if (!exists) {
+            if (!exists && !existsByPacket) {
               newMessages.set(message.conversationId, [
                 ...convMessages,
                 message,

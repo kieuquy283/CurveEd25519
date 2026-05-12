@@ -38,6 +38,10 @@ class ConnectionService:
         self.is_development = env in {"dev", "development", "local", "test"}
         self.code_pepper = (os.getenv("CONNECTION_CODE_PEPPER") or os.getenv("AUTH_CODE_PEPPER") or "curveapp-connection-pepper").encode("utf-8")
 
+    @staticmethod
+    def _notification_id() -> str:
+        return secrets.token_hex(12)
+
     def request_connection(self, *, from_user: str, to: str) -> dict[str, Any]:
         requester = self._resolve_user(from_user)
         recipient = self._resolve_user(to)
@@ -101,6 +105,22 @@ class ConnectionService:
             err = self.email_service.last_error or "SMTP send failed"
             cls = self.email_service.last_error_class or "SMTPError"
             response["error"] = f"{cls}: {err}"
+        self.storage.create_notification(
+            {
+                "id": self._notification_id(),
+                "user_email": recipient["email"],
+                "type": "connection_request",
+                "title": "Yêu cầu kết nối mới",
+                "body": f"{requester['email']} muốn kết nối với bạn",
+                "data": {
+                    "peerEmail": requester["email"],
+                    "connectionId": existing["id"],
+                    "status": "pending",
+                },
+                "read": False,
+                "created_at": self._utc_now(),
+            }
+        )
         return response
 
     def verify_connection(self, *, connection_id: str, user: str, code: str) -> dict[str, Any]:
@@ -126,6 +146,38 @@ class ConnectionService:
         conn["verification_code_hash"] = None
         conn["verification_expires_at"] = None
         self._save_connections(connections)
+        self.storage.create_notification(
+            {
+                "id": self._notification_id(),
+                "user_email": requester["email"],
+                "type": "connection_verified",
+                "title": "Kết nối đã xác minh",
+                "body": f"Bạn có thể nhắn tin an toàn với {recipient['email']}",
+                "data": {
+                    "peerEmail": recipient["email"],
+                    "connectionId": conn["id"],
+                    "status": "verified",
+                },
+                "read": False,
+                "created_at": self._utc_now(),
+            }
+        )
+        self.storage.create_notification(
+            {
+                "id": self._notification_id(),
+                "user_email": recipient["email"],
+                "type": "connection_verified",
+                "title": "Kết nối đã xác minh",
+                "body": f"Bạn có thể nhắn tin an toàn với {requester['email']}",
+                "data": {
+                    "peerEmail": requester["email"],
+                    "connectionId": conn["id"],
+                    "status": "verified",
+                },
+                "read": False,
+                "created_at": self._utc_now(),
+            }
+        )
 
         return {"ok": True, "status": "verified", "connection_id": conn["id"]}
 

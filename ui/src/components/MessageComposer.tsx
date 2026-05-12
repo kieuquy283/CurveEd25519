@@ -7,6 +7,7 @@ import { useChatStore } from "@/store/useChatStore";
 import { getCurrentUserId } from "@/store/useAuthStore";
 import { useContactStore } from "@/store/useContactStore";
 import { websocketService } from "@/services/websocket";
+import { saveConversationMessage } from "@/services/chatHistory";
 import {
   encryptConversationMessage,
   signFileContainer,
@@ -326,6 +327,22 @@ export function MessageComposer({ conversationId }: Props) {
           "[Composer] WebSocket not connected. Message encrypted and stored locally:",
           wsError
         );
+      }
+
+      try {
+        await saveConversationMessage(conversationId, {
+          sender_email: currentUserId,
+          receiver_email: conversationId,
+          packet_id: packet.packet_id,
+          message_type: isFileMessage ? "file" : "text",
+          ciphertext_envelope: encrypted.envelope as Record<string, unknown>,
+          plaintext_preview: trimmed.slice(0, 200),
+          attachment_json: attachmentPayload as Record<string, unknown> | undefined,
+          crypto_debug: (encrypted.debug ?? {}) as Record<string, unknown>,
+          status: "sent",
+        });
+      } catch (persistError) {
+        console.warn("[Composer] saveConversationMessage failed:", persistError);
       }
     } catch (error) {
       console.error("[Composer] Backend crypto API unreachable or encrypt failed:", error);

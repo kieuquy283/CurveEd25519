@@ -1,5 +1,5 @@
-/**
- * Sidebar — conversation list, search, connection status, profile.
+﻿/**
+ * Sidebar â€” conversation list, search, connection status, profile.
  */
 
 "use client";
@@ -27,6 +27,9 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { websocketService } from "@/services/websocket";
 import { listTrustedContacts, requestConnection, verifyConnection } from "@/services/connections";
 import { useContactStore } from "@/store/useContactStore";
+import { listConversations, listConversationMessages } from "@/services/chatHistory";
+import { listNotifications, markNotificationRead } from "@/services/notifications";
+import { useNotificationStore } from "@/store/useNotificationStore";
 
 interface SidebarProps {
   onSelectConversation?: () => void;
@@ -55,7 +58,12 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
 
   const conversationMap = useChatStore((s) => s.conversations);
   const addConversation = useChatStore((s) => s.addConversation);
+  const addMessages = useChatStore((s) => s.addMessages);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const notificationHistory = useNotificationStore((s) => s.getRecentNotifications(10));
+  const upsertNotification = useNotificationStore((s) => s.upsertNotification);
+  const markAsReadLocal = useNotificationStore((s) => s.markAsRead);
 
   const connected = useWebSocketStore((s) => s.connected);
   const connecting = useWebSocketStore((s) => s.connecting);
@@ -101,6 +109,92 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
       })
       .catch(() => {});
   }, [currentUser?.id, replaceContacts]);
+
+  useEffect(() => {
+    const userId = currentUser?.id || currentUser?.email;
+    if (!userId) return;
+    listConversations(userId)
+      .then((result) => {
+        for (const row of result.conversations) {
+          const a = String(row.user_a_email || "");
+          const b = String(row.user_b_email || "");
+          const me = String(userId).toLowerCase();
+          const peer = a.toLowerCase() === me ? b : a;
+          if (!peer) continue;
+          addConversation({
+            id: String(row.id || `${me}:${peer}`),
+            peerId: peer,
+            peerName: peer,
+            createdAt: String(row.created_at || new Date().toISOString()),
+            lastMessageAt: String(row.last_message_at || row.updated_at || row.created_at || new Date().toISOString()),
+            unreadCount: 0,
+            encrypted: true,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [currentUser?.id, currentUser?.email, addConversation]);
+
+  useEffect(() => {
+    const userId = currentUser?.id || currentUser?.email;
+    if (!userId || !activeConversationId) return;
+    listConversationMessages(activeConversationId, userId, 100)
+      .then((result) => {
+        const mapped = result.messages.map((m) => ({
+          id: String(m.id || m.packet_id || crypto.randomUUID()),
+          packetId: (m.packet_id as string | undefined) || undefined,
+          conversationId: String(m.conversation_id || activeConversationId),
+          from: String(m.sender_email || ""),
+          to: String(m.receiver_email || ""),
+          text: String(m.plaintext_preview || ""),
+          type: (String(m.message_type || "text") as "text" | "file"),
+          envelope: (m.ciphertext_envelope as Record<string, unknown> | undefined) || undefined,
+          attachments:
+            m.attachment_json && typeof m.attachment_json === "object"
+              ? [m.attachment_json as never]
+              : undefined,
+          cryptoDebug: (m.crypto_debug as Record<string, unknown> | undefined) || undefined,
+          timestamp: String(m.created_at || new Date().toISOString()),
+          status: (String(m.status || "delivered") as "pending" | "queued" | "sent" | "delivered" | "acked" | "read" | "failed" | "expired" | "dropped"),
+        }));
+        addMessages(mapped);
+      })
+      .catch(() => {});
+  }, [activeConversationId, currentUser?.id, currentUser?.email, addMessages]);
+
+  useEffect(() => {
+    const userId = currentUser?.id || currentUser?.email;
+    if (!userId) return;
+    let mounted = true;
+    const pull = async () => {
+      try {
+        const res = await listNotifications(userId);
+        if (!mounted) return;
+        for (const n of res.notifications) {
+          const createdAtRaw = String(n.created_at || "");
+          const createdAt = Number.isNaN(Date.parse(createdAtRaw)) ? Date.now() : Date.parse(createdAtRaw);
+          upsertNotification({
+            id: String(n.id || crypto.randomUUID()),
+            title: String(n.title || "Thong bao"),
+            body: String(n.body || ""),
+            level: (String(n.type || "info") === "message" ? "message" : "info"),
+            read: Boolean(n.read),
+            dismissed: false,
+            createdAt,
+            metadata: (n.data as Record<string, unknown> | undefined) || undefined,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+    pull();
+    const id = setInterval(pull, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [currentUser?.id, currentUser?.email, upsertNotification]);
 
   const handleCreateConversation = (contact: { id: string; name: string }) => {
     const now = new Date().toISOString();
@@ -154,7 +248,7 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
                 setShowSignatureDialog(true)
               }
               className="w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center transition-colors"
-              title="Ký file"
+              title="KÃ½ file"
               type="button"
             >
               <FileSignature
@@ -190,7 +284,7 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
 
           <input
             type="search"
-            placeholder="Search conversations…"
+            placeholder="Search conversationsâ€¦"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(
@@ -212,6 +306,46 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
       </div>
 
       <div className="px-3 py-3 border-t border-[var(--border)]">
+        <div className="mb-2">
+          <div className="text-[10px] text-zinc-500 mb-1">Notifications</div>
+          <div className="max-h-24 overflow-auto space-y-1">
+            {notificationHistory.slice(0, 3).map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                onClick={async () => {
+                  markAsReadLocal(n.id);
+                  await markNotificationRead(n.id).catch(() => {});
+                  const meta = (n.metadata || {}) as Record<string, unknown>;
+                  const peerEmail = String(meta.peerEmail || n.peerId || "");
+                  if (!peerEmail) return;
+                  const convId = String(meta.conversationId || "");
+                  addConversation({
+                    id: convId || peerEmail,
+                    peerId: peerEmail,
+                    peerName: peerEmail,
+                    createdAt: new Date().toISOString(),
+                    lastMessageAt: new Date().toISOString(),
+                    unreadCount: 0,
+                    encrypted: true,
+                  });
+                  setActiveConversation(convId || peerEmail);
+                  if (String(meta.status || "") === "pending") {
+                    setShowDialog(true);
+                    setConnectTo(peerEmail);
+                    setConnectionId(String(meta.connectionId || ""));
+                  }
+                  onSelectConversation?.();
+                }}
+                className="w-full rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-left text-[10px] text-zinc-300 hover:border-zinc-600"
+              >
+                <div className="font-medium text-zinc-200">{n.title}</div>
+                <div className="truncate">{n.body}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="mb-3 text-[10px] text-zinc-500">Verified contacts: {trustedContacts.length}</div>
 
         <div className="flex items-center gap-2">
@@ -344,7 +478,7 @@ function ConnectionPill({
       <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-yellow-500/10 border border-yellow-500/20">
         <Loader2 size={11} className="text-yellow-400 animate-spin" />
         <span className="text-[10px] font-medium text-yellow-400">
-          Connecting…
+          Connectingâ€¦
         </span>
       </div>
     );
@@ -355,7 +489,7 @@ function ConnectionPill({
       <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20">
         <WifiOff size={11} className="text-red-400 shrink-0" />
         <span className="text-[10px] font-medium text-red-400 truncate">
-          {attempts > 0 ? `Reconnecting… (${attempts})` : "Disconnected"}
+          {attempts > 0 ? `Reconnectingâ€¦ (${attempts})` : "Disconnected"}
         </span>
         <button
           type="button"
@@ -377,3 +511,4 @@ function ConnectionPill({
     </div>
   );
 }
+

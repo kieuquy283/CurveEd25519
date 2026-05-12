@@ -17,6 +17,9 @@ class StorageRepository:
         self.profiles_path = self.data_dir / "profiles.json"
         self.connections_path = self.data_dir / "connections.json"
         self.signed_files_path = self.data_dir / "signed_files.json"
+        self.conversations_path = self.data_dir / "conversations.json"
+        self.messages_path = self.data_dir / "messages.json"
+        self.notifications_path = self.data_dir / "notifications.json"
         self.supabase_url = (os.getenv("SUPABASE_URL") or "").strip()
         self.supabase_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
         self.app_env = (os.getenv("APP_ENV") or "development").strip().lower()
@@ -39,7 +42,15 @@ class StorageRepository:
         self._supabase = create_client(self.supabase_url, self.supabase_key)
 
     def _ensure_file_store(self) -> None:
-        for p in [self.accounts_path, self.profiles_path, self.connections_path, self.signed_files_path]:
+        for p in [
+            self.accounts_path,
+            self.profiles_path,
+            self.connections_path,
+            self.signed_files_path,
+            self.conversations_path,
+            self.messages_path,
+            self.notifications_path,
+        ]:
             if not p.exists():
                 p.write_text("[]", encoding="utf-8")
 
@@ -296,6 +307,168 @@ class StorageRepository:
         rows.append(record)
         self._write_rows(self.signed_files_path, rows)
 
+    # Conversations / messages
+    def get_or_create_conversation(self, user_a: str, user_b: str, connection_id: str | None = None) -> dict[str, Any]:
+        a = self._norm_email(user_a)
+        b = self._norm_email(user_b)
+        pair = {a, b}
+        if self.is_supabase():
+            rows = list(
+                self._supabase.table("app_conversations").select("*").or_(
+                    f"and(user_a_email.eq.{a},user_b_email.eq.{b}),and(user_a_email.eq.{b},user_b_email.eq.{a})"
+                ).limit(1).execute().data or []
+            )
+            if rows:
+                return dict(rows[0])
+            import secrets
+            now = self._now_iso()
+            conv = {
+                "id": secrets.token_hex(12),
+                "user_a_email": a,
+                "user_b_email": b,
+                "connection_id": connection_id,
+                "created_at": now,
+                "updated_at": now,
+                "last_message_at": None,
+                "last_message_preview": None,
+            }
+            self._supabase.table("app_conversations").upsert(conv, on_conflict="id").execute()
+            return conv
+        rows = self._read_rows(self.conversations_path)
+        for row in rows:
+            if {self._norm_email(str(row.get("user_a_email") or "")), self._norm_email(str(row.get("user_b_email") or ""))} == pair:
+                return row
+        import secrets
+        now = self._now_iso()
+        conv = {
+            "id": secrets.token_hex(12),
+            "user_a_email": a,
+            "user_b_email": b,
+            "connection_id": connection_id,
+            "created_at": now,
+            "updated_at": now,
+            "last_message_at": None,
+            "last_message_preview": None,
+        }
+        rows.append(conv)
+        self._write_rows(self.conversations_path, rows)
+        return conv
+
+    def list_conversations(self, user_email: str) -> list[dict[str, Any]]:
+        user = self._norm_email(user_email)
+        if self.is_supabase():
+            data = list(
+                self._supabase.table("app_conversations")
+                .select("*")
+                .or_(f"user_a_email.eq.{user},user_b_email.eq.{user}")
+                .execute()
+                .data
+                or []
+            )
+            return data
+        rows = self._read_rows(self.conversations_path)
+        return [
+            row for row in rows
+            if self._norm_email(str(row.get("user_a_email") or "")) == user
+            or self._norm_email(str(row.get("user_b_email") or "")) == user
+        ]
+
+    def save_message(self, message_record: dict[str, Any]) -> dict[str, Any]:
+        rec = dict(message_record)
+        rec["sender_email"] = self._norm_email(str(rec.get("sender_email") or ""))
+        rec["receiver_email"] = self._norm_email(str(rec.get("receiver_email") or ""))
+        if self.is_supabase():
+            self._supabase.table("app_messages").upsert(rec, on_conflict="id").execute()
+            # update conversation latest fields
+            if rec.get("conversation_id"):
+                self._supabase.table("app_conversations").update({
+                    "updated_at": self._now_iso(),
+                    "last_message_at": rec.get("created_at") or self._now_iso(),
+                    "last_message_preview": rec.get("plaintext_preview"),
+                }).eq("id", rec["conversation_id"]).execute()
+            return rec
+        rows = self._read_rows(self.messages_path)
+        replaced = False
+        for i, row in enumerate(rows):
+            if row.get("id") == rec.get("id") or (row.get("packet_id") and row.get("packet_id") == rec.get("packet_id")):
+                rows[i] = rec
+                replaced = True
+                break
+        if not replaced:
+            rows.append(rec)
+        self._write_rows(self.messages_path, rows)
+        return rec
+
+    def list_messages(self, conversation_id: str, user_email: str, limit: int = 50) -> list[dict[str, Any]]:
+        user = self._norm_email(user_email)
+        if self.is_supabase():
+            conv_rows = list(self._supabase.table("app_conversations").select("*").eq("id", conversation_id).limit(1).execute().data or [])
+            if not conv_rows:
+                return []
+            conv = conv_rows[0]
+            if user not in {self._norm_email(str(conv.get("user_a_email") or "")), self._norm_email(str(conv.get("user_b_email") or ""))}:
+                return []
+            data = list(
+                self._supabase.table("app_messages")
+                .select("*")
+                .eq("conversation_id", conversation_id)
+                .order("created_at", desc=False)
+                .limit(limit)
+                .execute()
+                .data
+                or []
+            )
+            return data
+        convs = self._read_rows(self.conversations_path)
+        conv = next((c for c in convs if c.get("id") == conversation_id), None)
+        if not conv:
+            return []
+        if user not in {self._norm_email(str(conv.get("user_a_email") or "")), self._norm_email(str(conv.get("user_b_email") or ""))}:
+            return []
+        rows = [r for r in self._read_rows(self.messages_path) if r.get("conversation_id") == conversation_id]
+        rows.sort(key=lambda x: str(x.get("created_at") or ""))
+        return rows[-limit:]
+
+    # Notifications
+    def create_notification(self, notif: dict[str, Any]) -> dict[str, Any]:
+        record = dict(notif)
+        record["user_email"] = self._norm_email(str(record.get("user_email") or ""))
+        if self.is_supabase():
+            self._supabase.table("app_notifications").upsert(record, on_conflict="id").execute()
+            return record
+        rows = self._read_rows(self.notifications_path)
+        rows.append(record)
+        self._write_rows(self.notifications_path, rows)
+        return record
+
+    def list_notifications(self, user_email: str) -> list[dict[str, Any]]:
+        user = self._norm_email(user_email)
+        if self.is_supabase():
+            data = list(
+                self._supabase.table("app_notifications")
+                .select("*")
+                .eq("user_email", user)
+                .order("created_at", desc=True)
+                .execute()
+                .data
+                or []
+            )
+            return data
+        rows = [r for r in self._read_rows(self.notifications_path) if self._norm_email(str(r.get("user_email") or "")) == user]
+        rows.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+        return rows
+
+    def mark_notification_read(self, notif_id: str) -> None:
+        if self.is_supabase():
+            self._supabase.table("app_notifications").update({"read": True}).eq("id", notif_id).execute()
+            return
+        rows = self._read_rows(self.notifications_path)
+        for row in rows:
+            if row.get("id") == notif_id:
+                row["read"] = True
+                break
+        self._write_rows(self.notifications_path, rows)
+
     def debug_storage(self) -> dict[str, Any]:
         out = {
             "ok": True,
@@ -306,6 +479,9 @@ class StorageRepository:
             "profile_count": None,
             "connection_count": None,
             "signed_file_count": None,
+            "conversation_count": None,
+            "message_count": None,
+            "notification_count": None,
         }
         if self.is_supabase():
             try:
@@ -324,9 +500,24 @@ class StorageRepository:
                 out["signed_file_count"] = len([r for r in self._supabase.table("app_signed_files").select("id").execute().data or []])
             except Exception:
                 out["signed_file_count"] = None
+            try:
+                out["conversation_count"] = len([r for r in self._supabase.table("app_conversations").select("id").execute().data or []])
+            except Exception:
+                out["conversation_count"] = None
+            try:
+                out["message_count"] = len([r for r in self._supabase.table("app_messages").select("id").execute().data or []])
+            except Exception:
+                out["message_count"] = None
+            try:
+                out["notification_count"] = len([r for r in self._supabase.table("app_notifications").select("id").execute().data or []])
+            except Exception:
+                out["notification_count"] = None
         else:
             out["account_count"] = len(self._read_rows(self.accounts_path))
             out["profile_count"] = len(self._read_rows(self.profiles_path))
             out["connection_count"] = len(self._read_rows(self.connections_path))
             out["signed_file_count"] = len(self._read_rows(self.signed_files_path))
+            out["conversation_count"] = len(self._read_rows(self.conversations_path))
+            out["message_count"] = len(self._read_rows(self.messages_path))
+            out["notification_count"] = len(self._read_rows(self.notifications_path))
         return out

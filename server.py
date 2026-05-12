@@ -11,6 +11,8 @@ from app.api.conversation_api import router as conversation_router
 from app.api.signature_api import router as signature_router
 from app.api.auth_api import router as auth_router
 from app.api.connection_api import router as connection_router
+from app.api.chat_history_api import router as chat_history_router
+from app.api.notification_api import router as notification_router
 
 app = FastAPI(title="CurveApp API")
 
@@ -36,6 +38,8 @@ app.include_router(conversation_router)
 app.include_router(signature_router)
 app.include_router(auth_router)
 app.include_router(connection_router)
+app.include_router(chat_history_router)
+app.include_router(notification_router)
 
 ws_clients: dict[str, WebSocket] = {}
 
