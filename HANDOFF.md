@@ -1862,3 +1862,96 @@ Recommended columns/indexes are aligned with:
 7. Click `Ký file`, confirm success and signed file list entry.
 8. Download signed file and send through chat.
 9. Receiver can still open envelope trace and signed-file section behavior remains intact.
+
+## 2026-05-13 - Production UX Stabilization (Chat/File/Notifications/Settings)
+
+### Stability fixes (A/B/C/F)
+- Fixed visible mojibake/broken labels in key chat/status/signature surfaces.
+- Improved crypto API reliability in frontend conversation service:
+  - request timeout (15s)
+  - structured backend error extraction (`detail`/`error`/`message`)
+  - clearer user-facing fallback: `Không kết nối được backend crypto API. Vui lòng thử lại.`
+- Message composer improvements:
+  - sender identity now prioritizes authenticated email (`trim().toLowerCase()`)
+  - trusted-connection warning text fixed
+  - file size guard (10MB)
+  - crypto failure now surfaces backend/transport detail instead of only generic failure
+- WebSocket provider stabilization:
+  - do not keep WS active when user is logged out
+  - disconnect on unauthenticated state to avoid duplicate/unstable sockets
+  - kept reconnect/backoff behavior and no-crash fallback
+
+### Conversation persistence + display name UX (D/F)
+- Backend conversation identity remains deterministic (stable pair-based id in storage repository).
+- `GET /api/conversations` now enriches rows with peer metadata:
+  - `peer_email`
+  - `peer_display_name`
+  - `peer_user_id`
+- Sidebar now uses `peer_display_name` as primary conversation label and email fallback.
+- Notification click navigation keeps scoped conversation open (no global message dump).
+
+### Notification behavior refinements (E)
+- Connection notifications now include `peerDisplayName` in metadata.
+- Message notifications include sender display name when available.
+- Existing notification click flow keeps behavior scoped to target conversation/connection.
+
+### Settings features (G)
+- Added backend auth/profile management endpoints:
+  - `GET /api/auth/me?user=<email>`
+  - `PATCH /api/auth/profile`
+  - `POST /api/auth/change-password`
+  - `DELETE /api/auth/account`
+- Backend logic added in `AuthService`:
+  - load current user profile
+  - update display name (email/user_id immutable)
+  - change password (requires current password)
+  - delete account (with password verification + dependent data cleanup for profiles/notifications/connections/messages/conversations)
+- Frontend profile settings now wired to real backend APIs:
+  - read-only user_id/email
+  - editable display name
+  - password change form
+  - delete account confirmation flow (`DELETE` or email)
+  - local auth/chat/signature cleanup on successful account deletion
+- Appearance settings extended:
+  - theme options
+  - font size options
+  - font family options (`default/sans/serif/mono`) with global application via `useTheme` + body class
+
+### Files changed
+- `app/api/auth_api.py`
+- `app/api/chat_history_api.py`
+- `app/services/auth_service.py`
+- `app/services/connection_service.py`
+- `app/services/storage_repository.py`
+- `ui/src/services/auth.ts`
+- `ui/src/services/conversationCrypto.ts`
+- `ui/src/components/MessageComposer.tsx`
+- `ui/src/components/Sidebar.tsx`
+- `ui/src/components/ChatLayout.tsx`
+- `ui/src/components/settings/AppearanceSettings.tsx`
+- `ui/src/components/settings/ProfileSettings.tsx`
+- `ui/src/components/settings/SettingsDialog.tsx`
+- `ui/src/hooks/useTheme.ts`
+- `ui/src/app/globals.css`
+- `ui/src/store/useAuthStore.ts`
+- `ui/src/store/useSettingsStore.ts`
+- `ui/src/store/useUiStore.ts`
+- `ui/src/types/models.ts`
+- `ui/src/providers/WebSocketProvider.tsx`
+
+### Supabase tables required
+- `app_accounts`
+- `app_profiles`
+- `app_connections`
+- `app_conversations`
+- `app_messages`
+- `app_notifications`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+- `cd ui && npm run build` (pass; non-blocking existing warnings remain)
+
+### Remaining limitations
+- Some secondary/non-critical UI strings remain English by design (not protocol-affecting).
+- Notification delivery is still poll-based fallback where WS push is not fully adopted.
+- Account deletion performs best-effort cleanup; schema/foreign-key policies may require additional DB-side constraints for strict cascade behavior.

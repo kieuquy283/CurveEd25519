@@ -18,6 +18,7 @@ export interface SettingsState {
 const DEFAULT_PREFS: UiPreferences = {
   theme: "dark",
   fontSize: "md",
+  fontFamily: "default",
   compactMode: false,
   enableSound: true,
   enableDesktopNotifications: false,

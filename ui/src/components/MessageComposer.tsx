@@ -4,7 +4,7 @@ import React, { ChangeEvent, useCallback, useEffect, useRef, useState } from "re
 import { CheckCircle2, FileCheck2, FileSignature, FileUp, Loader2, Send, ShieldAlert, X } from "lucide-react";
 
 import { useChatStore } from "@/store/useChatStore";
-import { getCurrentUserId } from "@/store/useAuthStore";
+import { getCurrentUserId, useAuthStore } from "@/store/useAuthStore";
 import { useContactStore } from "@/store/useContactStore";
 import { websocketService } from "@/services/websocket";
 import { saveConversationMessage } from "@/services/conversations";
@@ -28,6 +28,7 @@ interface PendingFile {
   file: File;
   dataBase64: string;
 }
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -83,6 +84,7 @@ export function MessageComposer({ conversationId }: Props) {
 
   const chatStore = useChatStore.getState();
   const isTrustedContact = useContactStore((s) => s.isTrustedContact);
+  const currentUserEmail = useAuthStore((s) => s.currentUser?.email);
 
   useEffect(() => {
     let stopped = false;
@@ -144,6 +146,10 @@ export function MessageComposer({ conversationId }: Props) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      alert("File quá lớn. Giới hạn 10MB.");
+      return;
+    }
     try {
       const dataBase64 = await fileToBase64(file);
       setPendingFile({ id: crypto.randomUUID(), file, dataBase64 });
@@ -208,7 +214,7 @@ export function MessageComposer({ conversationId }: Props) {
       setVerifyResult({
         ok: true,
         valid: false,
-        message: "File Ä‘Ã£ bá»‹ thay Ä‘á»•i hoáº·c chá»¯ kÃ½ khÃ´ng há»£p lá»‡.",
+        message: "File đã bị thay đổi hoặc chữ ký không hợp lệ.",
         debug: {
           algorithm: "Ed25519",
           hash: "SHA-256",
@@ -225,12 +231,12 @@ export function MessageComposer({ conversationId }: Props) {
   }, [sending]);
 
   const handleSend = useCallback(async () => {
-    const currentUserId = getCurrentUserId();
+    const currentUserId = (currentUserEmail || getCurrentUserId()).trim().toLowerCase();
     const file = pendingFile;
     const trimmed = text.trim();
     if ((!trimmed && !file) || sending) return;
     if (!isTrustedContact(conversationId)) {
-      alert("Báº¡n cáº§n xÃ¡c minh káº¿t ná»‘i vÃ  trao Ä‘á»•i khÃ³a cÃ´ng khai trÆ°á»›c khi gá»­i tin mÃ£ hÃ³a.");
+      alert("Bạn cần xác minh kết nối và trao đổi khóa công khai trước khi gửi tin mã hóa.");
       return;
     }
 
@@ -346,12 +352,14 @@ export function MessageComposer({ conversationId }: Props) {
       }
     } catch (error) {
       console.error("[Composer] Backend crypto API unreachable or encrypt failed:", error);
+      const detail = error instanceof Error ? error.message : "Không kết nối được backend crypto API. Vui lòng thử lại.";
+      alert(detail || "Không kết nối được backend crypto API. Vui lòng thử lại.");
       chatStore.updateMessageStatus(messageId, conversationId, "failed");
     } finally {
       setSending(false);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [conversationId, encryptMessage, pendingFile, sending, text, chatStore, isTrustedContact]);
+  }, [conversationId, currentUserEmail, encryptMessage, pendingFile, sending, text, chatStore, isTrustedContact]);
 
   return (
     <div className="border-t border-zinc-800 p-4">
@@ -360,14 +368,14 @@ export function MessageComposer({ conversationId }: Props) {
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-zinc-100">{pendingFile.file.name}</div>
             <div className="mt-1 text-xs text-zinc-400">
-              {formatFileSize(pendingFile.file.size)} Â· {pendingFile.file.type || "application/octet-stream"}
+              {formatFileSize(pendingFile.file.size)} · {pendingFile.file.type || "application/octet-stream"}
             </div>
             <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-              <div>MÃ£ hÃ³a: ChaCha20-Poly1305</div>
-              <div>Trao Ä‘á»•i khÃ³a: X25519</div>
+              <div>Mã hóa: ChaCha20-Poly1305</div>
+              <div>Trao đổi khóa: X25519</div>
               <div>KDF: HKDF-SHA256</div>
-              <div>Chá»¯ kÃ½: Ed25519</div>
-              <div>Giáº£i mÃ£: ThÃ nh cÃ´ng sau khi ngÆ°á»i nháº­n má»Ÿ envelope</div>
+              <div>Chữ ký: Ed25519</div>
+              <div>Giải mã: Thành công sau khi người nhận mở envelope</div>
             </div>
           </div>
           <button
@@ -405,7 +413,7 @@ export function MessageComposer({ conversationId }: Props) {
           className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200 hover:border-blue-500"
         >
           <FileSignature size={14} />
-          KÃ½ file
+          Ký file
         </button>
 
         <input
@@ -422,7 +430,7 @@ export function MessageComposer({ conversationId }: Props) {
           className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200 hover:border-emerald-500 disabled:opacity-50"
         >
           <FileCheck2 size={14} />
-          XÃ¡c minh chá»¯ kÃ½
+          Xác minh chữ ký
         </button>
       </div>
 
@@ -430,7 +438,7 @@ export function MessageComposer({ conversationId }: Props) {
         <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3 text-xs">
           <div className="mb-1 flex items-center justify-between">
             <div className="text-zinc-100 font-medium">
-              Káº¿t quáº£ xÃ¡c minh chá»¯ kÃ½
+              Kết quả xác minh chữ ký
             </div>
             <button
               type="button"
@@ -439,10 +447,10 @@ export function MessageComposer({ conversationId }: Props) {
                 setVerifiedContainer(null);
               }}
               className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
-              title="áº¨n káº¿t quáº£"
+              title="Ẩn kết quả"
             >
               <X size={12} />
-              áº¨n káº¿t quáº£
+              Ẩn kết quả
             </button>
           </div>
           {verifiedContainer && (
@@ -456,7 +464,7 @@ export function MessageComposer({ conversationId }: Props) {
           )}
           <div className={`mt-2 inline-flex items-center gap-1 ${verifyResult.valid ? "text-emerald-300" : "text-red-300"}`}>
             {verifyResult.valid ? <CheckCircle2 size={14} /> : <ShieldAlert size={14} />}
-            {verifyResult.valid ? "Chá»¯ kÃ½ há»£p lá»‡" : "File Ä‘Ã£ bá»‹ thay Ä‘á»•i hoáº·c chá»¯ kÃ½ khÃ´ng há»£p lá»‡."}
+            {verifyResult.valid ? "Chữ ký hợp lệ" : "File đã bị thay đổi hoặc chữ ký không hợp lệ."}
           </div>
           {verifyResult.valid && verifyResult.file && (
             <div className="mt-2">
@@ -471,7 +479,7 @@ export function MessageComposer({ conversationId }: Props) {
                 }
                 className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-emerald-200"
               >
-                Táº£i file gá»‘c
+                Tải file gốc
               </button>
             </div>
           )}

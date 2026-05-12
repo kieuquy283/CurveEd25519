@@ -21,6 +21,7 @@ interface AuthStore {
   requestPasswordReset: (email: string) => Promise<{ dev_code?: string; message: string; email_sent?: boolean; error?: string }>;
   resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
   clearError: () => void;
+  setCurrentUser: (user: AuthUser | null) => void;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -139,6 +140,11 @@ export const useAuthStore = create<AuthStore>()(
         },
 
         clearError: () => set({ error: null }),
+        setCurrentUser: (user) =>
+          set({
+            currentUser: user,
+            isAuthenticated: Boolean(user),
+          }),
       }),
       {
         name: "authStore",

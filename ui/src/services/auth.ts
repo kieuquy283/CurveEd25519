@@ -29,6 +29,16 @@ interface GenericResponse {
   dev_code?: string;
 }
 
+interface MeResponse {
+  ok: boolean;
+  user: {
+    user_id: string;
+    email: string;
+    display_name: string;
+    verified: boolean;
+  };
+}
+
 async function postJson<T>(path: string, payload: Record<string, unknown>): Promise<T> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     method: "POST",
@@ -75,4 +85,47 @@ export async function resetPassword(params: {
   new_password: string;
 }): Promise<GenericResponse> {
   return postJson<GenericResponse>("/api/auth/reset-password", params);
+}
+
+export async function getMe(user: string): Promise<MeResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/me?user=${encodeURIComponent(user)}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(typeof data?.detail === "string" ? data.detail : `HTTP ${response.status}`);
+  }
+  return data as MeResponse;
+}
+
+export async function updateProfile(params: { email: string; display_name: string }): Promise<GenericResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/profile`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(typeof data?.detail === "string" ? data.detail : `HTTP ${response.status}`);
+  }
+  return data as GenericResponse;
+}
+
+export async function changePassword(params: {
+  email: string;
+  current_password: string;
+  new_password: string;
+}): Promise<GenericResponse> {
+  return postJson<GenericResponse>("/api/auth/change-password", params);
+}
+
+export async function deleteAccount(params: { email: string; password: string }): Promise<GenericResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/account`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(typeof data?.detail === "string" ? data.detail : `HTTP ${response.status}`);
+  }
+  return data as GenericResponse;
 }

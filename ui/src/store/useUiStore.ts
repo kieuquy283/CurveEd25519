@@ -23,6 +23,7 @@ interface UiStore extends UiPreferences {
 const defaultPreferences: UiPreferences = {
   theme: "dark",
   fontSize: "md",
+  fontFamily: "default",
   compactMode: false,
   enableSound: true,
   enableDesktopNotifications: true,

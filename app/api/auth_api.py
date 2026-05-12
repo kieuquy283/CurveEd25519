@@ -57,6 +57,22 @@ class TestEmailRequest(BaseModel):
     to: str
 
 
+class UpdateProfileRequest(BaseModel):
+    email: str
+    display_name: str
+
+
+class ChangePasswordRequest(BaseModel):
+    email: str
+    current_password: str
+    new_password: str
+
+
+class DeleteAccountRequest(BaseModel):
+    email: str
+    password: str
+
+
 @router.post("/login")
 def login(req: LoginRequest):
     try:
@@ -199,3 +215,39 @@ def debug_user(email: str):
 def debug_storage():
     _log("GET /api/auth/debug-storage")
     return service.debug_storage_status()
+
+
+@router.get("/me")
+def me(user: str):
+    try:
+        return service.get_me(email=user)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch("/profile")
+def update_profile(req: UpdateProfileRequest):
+    try:
+        return service.update_profile(email=req.email, display_name=req.display_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/change-password")
+def change_password(req: ChangePasswordRequest):
+    try:
+        return service.change_password(
+            email=req.email,
+            current_password=req.current_password,
+            new_password=req.new_password,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/account")
+def delete_account(req: DeleteAccountRequest):
+    try:
+        return service.delete_account(email=req.email, password=req.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

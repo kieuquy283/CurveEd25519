@@ -285,6 +285,11 @@ export interface UiPreferences {
     | "sm"
     | "md"
     | "lg";
+  fontFamily:
+    | "default"
+    | "sans"
+    | "serif"
+    | "mono";
 
   compactMode: boolean;
 

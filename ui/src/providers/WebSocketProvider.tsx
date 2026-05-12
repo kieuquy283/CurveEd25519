@@ -143,7 +143,7 @@ function parseIncomingEnvelope(rawText: string) {
       };
     }
   } catch {
-    // text thÆ°á»ng, giá»¯ nguyÃªn rawText
+    // plain text payload: keep rawText
   }
 
   return {
@@ -164,6 +164,7 @@ export function WebSocketProvider({
       null
     );
   const initialWsErrorNotifiedRef = useRef(false);
+  const currentUserEmail = useAuthStore((state) => state.currentUser?.email);
   const currentUserId = useAuthStore(
     (state) => state.currentUser?.id
   ) || process.env.NEXT_PUBLIC_USER_ID || "frontend";
@@ -177,6 +178,11 @@ export function WebSocketProvider({
       : undefined;
 
   useEffect(() => {
+    if (!currentUserEmail) {
+      websocketService.disconnect().catch(() => {});
+      return;
+    }
+
     websocketService.updateConfig({
       ...(effectiveWsEndpoint
         ? { url: effectiveWsEndpoint }
@@ -476,7 +482,7 @@ export function WebSocketProvider({
 
       websocketService.disconnect();
     };
-  }, [currentUserId, effectiveWsEndpoint]);
+  }, [currentUserEmail, currentUserId, effectiveWsEndpoint]);
 
   return <>{children}</>;
 }

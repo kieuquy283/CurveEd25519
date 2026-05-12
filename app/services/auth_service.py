@@ -320,6 +320,122 @@ class AuthService:
         _log(f"test-email failed to={to} error={cls}: {err}")
         return False, f"{cls}: {err}"
 
+    def get_me(self, *, email: str) -> dict[str, Any]:
+        normalized_email = self._normalize_email(email)
+        accounts = self._load_accounts()
+        account = self._require_account(accounts, normalized_email)
+        return {
+            "ok": True,
+            "user": {
+                "user_id": str(account.get("user_id") or normalized_email),
+                "email": normalized_email,
+                "display_name": str(account.get("display_name") or normalized_email),
+                "verified": bool(account.get("verified")),
+            },
+        }
+
+    def update_profile(self, *, email: str, display_name: str) -> dict[str, Any]:
+        normalized_email = self._normalize_email(email)
+        accounts = self._load_accounts()
+        account = self._require_account(accounts, normalized_email)
+        clean_name = display_name.strip()
+        if not clean_name:
+            raise ValueError("Display name is required")
+        account["display_name"] = clean_name
+        account["updated_at"] = self._utc_now()
+        self._save_accounts(accounts)
+        profile = self._ensure_profile_exists(normalized_email, clean_name)
+        profile["display_name"] = clean_name
+        self.storage.upsert_profile(normalized_email, profile)
+        return {"ok": True, "message": "Profile updated", "display_name": clean_name}
+
+    def change_password(self, *, email: str, current_password: str, new_password: str) -> dict[str, Any]:
+        normalized_email = self._normalize_email(email)
+        self._validate_password(new_password)
+        accounts = self._load_accounts()
+        account = self._require_account(accounts, normalized_email)
+        if not self._verify_password(current_password, str(account.get("password_hash") or "")):
+            raise ValueError("Current password is incorrect")
+        account["password_hash"] = self._hash_password(new_password)
+        account["updated_at"] = self._utc_now()
+        self._save_accounts(accounts)
+        return {"ok": True, "message": "Password changed"}
+
+    def delete_account(self, *, email: str, password: str) -> dict[str, Any]:
+        normalized_email = self._normalize_email(email)
+        accounts = self._load_accounts()
+        account = self._require_account(accounts, normalized_email)
+        if not self._verify_password(password, str(account.get("password_hash") or "")):
+            raise ValueError("Invalid password")
+
+        # Delete account row
+        accounts = [a for a in accounts if str(a.get("email") or "").strip().lower() != normalized_email]
+        self._save_accounts(accounts)
+
+        # Best-effort cleanup of dependent records.
+        try:
+            if self.storage.is_supabase():
+                self.storage._supabase.table("app_profiles").delete().eq("email", normalized_email).execute()
+                self.storage._supabase.table("app_notifications").delete().eq("user_email", normalized_email).execute()
+                self.storage._supabase.table("app_connections").delete().or_(
+                    f"requester_email.eq.{normalized_email},recipient_email.eq.{normalized_email}"
+                ).execute()
+                self.storage._supabase.table("app_messages").delete().or_(
+                    f"sender_email.eq.{normalized_email},receiver_email.eq.{normalized_email}"
+                ).execute()
+                self.storage._supabase.table("app_conversations").delete().or_(
+                    f"user_a_email.eq.{normalized_email},user_b_email.eq.{normalized_email}"
+                ).execute()
+            else:
+                self.storage._write_rows(
+                    self.storage.profiles_path,
+                    [r for r in self.storage._read_rows(self.storage.profiles_path) if str(r.get("email") or "").strip().lower() != normalized_email],
+                )
+                self.storage._write_rows(
+                    self.storage.notifications_path,
+                    [r for r in self.storage._read_rows(self.storage.notifications_path) if str(r.get("user_email") or "").strip().lower() != normalized_email],
+                )
+                self.storage._write_rows(
+                    self.storage.connections_path,
+                    [
+                        r
+                        for r in self.storage._read_rows(self.storage.connections_path)
+                        if normalized_email
+                        not in {
+                            str(r.get("requester_email") or "").strip().lower(),
+                            str(r.get("recipient_email") or "").strip().lower(),
+                        }
+                    ],
+                )
+                self.storage._write_rows(
+                    self.storage.messages_path,
+                    [
+                        r
+                        for r in self.storage._read_rows(self.storage.messages_path)
+                        if normalized_email
+                        not in {
+                            str(r.get("sender_email") or "").strip().lower(),
+                            str(r.get("receiver_email") or "").strip().lower(),
+                        }
+                    ],
+                )
+                self.storage._write_rows(
+                    self.storage.conversations_path,
+                    [
+                        r
+                        for r in self.storage._read_rows(self.storage.conversations_path)
+                        if normalized_email
+                        not in {
+                            str(r.get("user_a_email") or "").strip().lower(),
+                            str(r.get("user_b_email") or "").strip().lower(),
+                        }
+                    ],
+                )
+        except Exception as exc:
+            _log(f"delete_account cleanup warning email={normalized_email} error={exc}")
+
+        return {"ok": True, "message": "Account deleted"}
+
     def _profile_for_account(self, account: dict[str, Any]) -> dict[str, Any]:
         email = str(account.get("email") or "").strip().lower()
         profile = self._ensure_profile_exists(email, str(account.get("display_name") or email))

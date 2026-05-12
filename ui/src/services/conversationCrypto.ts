@@ -36,6 +36,32 @@ export interface VerifyFileResult {
   };
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readErrorMessage(response: Response): Promise<string> {
+  try {
+    const data = await response.json();
+    if (typeof data?.detail === "string") return data.detail;
+    if (typeof data?.error === "string") return data.error;
+    if (typeof data?.message === "string") return data.message;
+  } catch {
+    // ignore
+  }
+  try {
+    return await response.text();
+  } catch {
+    return "";
+  }
+}
+
 export async function encryptConversationMessage(params: {
   sender: string;
   recipient: string;
@@ -50,20 +76,24 @@ export async function encryptConversationMessage(params: {
     let response: Response;
 
     try {
-      response = await fetch(`${base}/api/conversation/encrypt`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      response = await fetchWithTimeout(
+        `${base}/api/conversation/encrypt`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(params),
         },
-        body: JSON.stringify(params),
-      });
+        15000
+      );
     } catch (error) {
       lastNetworkError = error;
       continue;
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await readErrorMessage(response);
       throw new Error(
         `Encrypt API failed (${response.status}) at ${base}: ${errorText || "unknown error"}`
       );
@@ -73,7 +103,7 @@ export async function encryptConversationMessage(params: {
   }
 
   throw new Error(
-    `Backend crypto API unreachable at ${baseCandidates.join(" or ")}. Start backend and verify NEXT_PUBLIC_API_BASE_URL. ${lastNetworkError instanceof Error ? `Cause: ${lastNetworkError.message}` : ""}`.trim()
+    `Không kết nối được backend crypto API. Vui lòng thử lại.${lastNetworkError instanceof Error ? ` Cause: ${lastNetworkError.message}` : ""}`.trim()
   );
 }
 
@@ -82,20 +112,25 @@ export async function decryptIncomingMessage(params: {
   sender: string;
   envelope: unknown;
 }): Promise<DecryptIncomingResult> {
-  const response = await fetch(`${getConversationApiBaseUrl()}/api/conversation/decrypt`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  const response = await fetchWithTimeout(
+    `${getConversationApiBaseUrl()}/api/conversation/decrypt`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        receiver: params.receiver,
+        sender: params.sender,
+        envelope: params.envelope,
+      }),
     },
-    body: JSON.stringify({
-      receiver: params.receiver,
-      sender: params.sender,
-      envelope: params.envelope,
-    }),
-  });
+    15000
+  );
 
   if (!response.ok) {
-    throw new Error("Failed to decrypt incoming message");
+    const detail = await readErrorMessage(response);
+    throw new Error(detail || "Failed to decrypt incoming message");
   }
 
   const data = await response.json();
@@ -149,14 +184,18 @@ export async function signFileContainer(params: {
   content_b64: string;
 }): Promise<SignFileResult> {
   const apiBaseUrl = getConversationApiBaseUrl();
-  const response = await fetch(`${apiBaseUrl}/api/signature/sign-file`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
+  const response = await fetchWithTimeout(
+    `${apiBaseUrl}/api/signature/sign-file`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    },
+    15000
+  );
 
   if (!response.ok) {
-    const errorText = await response.text();
+    const errorText = await readErrorMessage(response);
     throw new Error(`Sign-file failed (${response.status}): ${errorText}`);
   }
 
@@ -168,14 +207,18 @@ export async function verifySignedFileContainer(params: {
   verifier?: string;
 }): Promise<VerifyFileResult> {
   const apiBaseUrl = getConversationApiBaseUrl();
-  const response = await fetch(`${apiBaseUrl}/api/signature/verify-file`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
+  const response = await fetchWithTimeout(
+    `${apiBaseUrl}/api/signature/verify-file`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    },
+    15000
+  );
 
   if (!response.ok) {
-    const errorText = await response.text();
+    const errorText = await readErrorMessage(response);
     throw new Error(`Verify-file failed (${response.status}): ${errorText}`);
   }
 

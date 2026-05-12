@@ -39,7 +39,19 @@ def list_conversations(user: str = Query(...)):
     user_norm = _norm(user)
     try:
         rows = storage.list_conversations(user_norm)
-        return {"ok": True, "conversations": rows}
+        accounts = {str(a.get("email") or "").strip().lower(): a for a in storage.list_accounts()}
+        enriched: list[dict[str, Any]] = []
+        for row in rows:
+            a = str(row.get("user_a_email") or "").strip().lower()
+            b = str(row.get("user_b_email") or "").strip().lower()
+            peer_email = b if a == user_norm else a
+            peer_account = accounts.get(peer_email, {})
+            item = dict(row)
+            item["peer_email"] = peer_email
+            item["peer_display_name"] = str(peer_account.get("display_name") or peer_email)
+            item["peer_user_id"] = str(peer_account.get("user_id") or peer_email)
+            enriched.append(item)
+        return {"ok": True, "conversations": enriched}
     except Exception as exc:
         return {
             "ok": True,
@@ -104,15 +116,19 @@ def save_message(conversation_id: str, body: SaveMessageBody):
         return {"ok": False, "error": f"save_message_failed: {exc.__class__.__name__}"}
 
     try:
+        accounts = {str(a.get("email") or "").strip().lower(): a for a in storage.list_accounts()}
+        sender_account = accounts.get(sender, {})
+        sender_display = str(sender_account.get("display_name") or sender)
         storage.create_notification(
             {
                 "id": secrets.token_hex(12),
                 "user_email": receiver,
                 "type": "message",
-                "title": sender,
+                "title": sender_display,
                 "body": (body.plaintext_preview or "").strip()[:120] or "Tin nhan moi",
                 "data": {
                     "peerEmail": sender,
+                    "peerDisplayName": sender_display,
                     "conversationId": conversation_id,
                     "status": "message",
                 },

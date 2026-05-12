@@ -127,12 +127,13 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
           const a = String(row.user_a_email || "");
           const b = String(row.user_b_email || "");
           const me = String(userId).toLowerCase();
-          const peer = a.toLowerCase() === me ? b : a;
+          const peer = String(row.peer_email || (a.toLowerCase() === me ? b : a));
+          const peerName = String(row.peer_display_name || peer);
           if (!peer) continue;
           addConversation({
             id: String(row.id || `${me}:${peer}`),
             peerId: peer,
-            peerName: peer,
+            peerName,
             createdAt: String(row.created_at || new Date().toISOString()),
             lastMessageAt: String(row.last_message_at || row.updated_at || row.created_at || new Date().toISOString()),
             unreadCount: 0,
@@ -192,7 +193,7 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
           const createdAt = Number.isNaN(Date.parse(createdAtRaw)) ? Date.now() : Date.parse(createdAtRaw);
           upsertNotification({
             id: String(n.id || crypto.randomUUID()),
-            title: String(n.title || "Thong bao"),
+            title: String(n.title || "Thông báo"),
             body: String(n.body || ""),
             level: (String(n.type || "info") === "message" ? "message" : "info"),
             read: Boolean(n.read),
@@ -265,7 +266,7 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
                 setShowSignatureDialog(true)
               }
               className="w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center transition-colors"
-              title="KÃ½ file"
+              title="Ký file"
               type="button"
             >
               <FileSignature
@@ -301,7 +302,7 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
 
           <input
             type="search"
-            placeholder="Search conversationsâ€¦"
+            placeholder="Tìm kiếm cuộc trò chuyện..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(
@@ -335,12 +336,13 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
                   await markNotificationRead(n.id).catch(() => {});
                   const meta = (n.metadata || {}) as Record<string, unknown>;
                   const peerEmail = String(meta.peerEmail || n.peerId || "");
+                  const peerDisplayName = String(meta.peerDisplayName || peerEmail || "");
                   if (!peerEmail) return;
                   const convId = String(meta.conversationId || "");
                   addConversation({
                     id: convId || peerEmail,
                     peerId: peerEmail,
-                    peerName: peerEmail,
+                    peerName: peerDisplayName || peerEmail,
                     createdAt: new Date().toISOString(),
                     lastMessageAt: new Date().toISOString(),
                     unreadCount: 0,
@@ -484,7 +486,7 @@ function ConnectionPill({
       <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-500/10 border border-green-500/20">
         <Wifi size={11} className="text-green-400" />
         <span className="text-[10px] font-medium text-green-400">
-          Connected
+          Đã kết nối
         </span>
       </div>
     );
@@ -495,7 +497,7 @@ function ConnectionPill({
       <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-yellow-500/10 border border-yellow-500/20">
         <Loader2 size={11} className="text-yellow-400 animate-spin" />
         <span className="text-[10px] font-medium text-yellow-400">
-          Connectingâ€¦
+          Đang kết nối...
         </span>
       </div>
     );
@@ -506,7 +508,7 @@ function ConnectionPill({
       <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20">
         <WifiOff size={11} className="text-red-400 shrink-0" />
         <span className="text-[10px] font-medium text-red-400 truncate">
-          {attempts > 0 ? `Reconnectingâ€¦ (${attempts})` : "Disconnected"}
+          {attempts > 0 ? `Đang kết nối lại... (${attempts})` : "Mất kết nối"}
         </span>
         <button
           type="button"
@@ -515,7 +517,7 @@ function ConnectionPill({
           }}
           className="ml-auto rounded border border-red-400/40 px-1.5 py-0.5 text-[10px] text-red-200 hover:bg-red-500/20"
         >
-          Reconnect now
+          Kết nối lại
         </button>
       </div>
     );
@@ -524,7 +526,7 @@ function ConnectionPill({
   return (
     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 border border-[var(--border)]">
       <WifiOff size={11} className="text-muted-foreground" />
-      <span className="text-[10px] text-muted-foreground">Offline</span>
+      <span className="text-[10px] text-muted-foreground">Mất kết nối</span>
     </div>
   );
 }

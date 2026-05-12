@@ -22,7 +22,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
   if (!open) return null;
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Settings" className="fixed inset-0 flex items-center justify-center bg-black/60 z-50">
+    <div role="dialog" aria-modal="true" aria-label="Cài đặt" className="fixed inset-0 flex items-center justify-center bg-black/60 z-50">
       <div className="bg-slate-900 w-full max-w-3xl rounded-md overflow-hidden" tabIndex={-1}>
         <div className="flex">
           <div className="w-1/2 border-r border-slate-800">
@@ -35,7 +35,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
           </div>
         </div>
         <div className="flex justify-end p-3 border-t border-slate-800">
-          <button data-settings-first onClick={onClose} className="px-3 py-2 rounded-md">Close</button>
+          <button data-settings-first onClick={onClose} className="px-3 py-2 rounded-md">Đóng</button>
         </div>
       </div>
     </div>

@@ -114,6 +114,7 @@ class ConnectionService:
                 "body": f"{requester['email']} muốn kết nối với bạn",
                 "data": {
                     "peerEmail": requester["email"],
+                    "peerDisplayName": requester.get("display_name") or requester["email"],
                     "connectionId": existing["id"],
                     "status": "pending",
                 },
@@ -155,6 +156,7 @@ class ConnectionService:
                 "body": f"Bạn có thể nhắn tin an toàn với {recipient['email']}",
                 "data": {
                     "peerEmail": recipient["email"],
+                    "peerDisplayName": recipient.get("display_name") or recipient["email"],
                     "connectionId": conn["id"],
                     "status": "verified",
                 },
@@ -171,6 +173,7 @@ class ConnectionService:
                 "body": f"Bạn có thể nhắn tin an toàn với {requester['email']}",
                 "data": {
                     "peerEmail": requester["email"],
+                    "peerDisplayName": requester.get("display_name") or requester["email"],
                     "connectionId": conn["id"],
                     "status": "verified",
                 },
