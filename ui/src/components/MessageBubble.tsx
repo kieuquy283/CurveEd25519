@@ -18,20 +18,33 @@ interface MessageBubbleProps {
   isLastInGroup: boolean;
 }
 
-function getMessageEnvelope(message: ChatMessage): any {
+type MessageMeta = {
+  envelope?: Record<string, unknown>;
+  debug?: Record<string, unknown>;
+};
+
+type ExtendedChatMessage = ChatMessage & {
+  cryptoEnvelope?: Record<string, unknown>;
+  debug?: Record<string, unknown>;
+  metadata?: MessageMeta;
+};
+
+function getMessageEnvelope(message: ChatMessage): Record<string, unknown> | null {
+  const msg = message as ExtendedChatMessage;
   return (
-    (message as any).envelope ??
-    (message as any).cryptoEnvelope ??
-    (message as any).metadata?.envelope ??
+    msg.envelope ??
+    msg.cryptoEnvelope ??
+    msg.metadata?.envelope ??
     null
   );
 }
 
-function getMessageDebug(message: ChatMessage): any {
+function getMessageDebug(message: ChatMessage): Record<string, unknown> | null {
+  const msg = message as ExtendedChatMessage;
   return (
-    (message as any).cryptoDebug ??
-    (message as any).debug ??
-    (message as any).metadata?.debug ??
+    (msg.cryptoDebug as Record<string, unknown> | null | undefined) ??
+    msg.debug ??
+    msg.metadata?.debug ??
     null
   );
 }
@@ -53,8 +66,8 @@ function MessageBubbleInner({
   });
 
   const [openTrace, setOpenTrace] = useState(false);
-  const [traceDebug, setTraceDebug] = useState<any>(getMessageDebug(message));
-  const [traceEnvelope, setTraceEnvelope] = useState<any>(
+  const [traceDebug, setTraceDebug] = useState<Record<string, unknown> | null>(getMessageDebug(message));
+  const [traceEnvelope, setTraceEnvelope] = useState<Record<string, unknown> | null>(
     getMessageEnvelope(message)
   );
   const [traceMode, setTraceMode] = useState<"encrypt" | "decrypt">(
@@ -211,7 +224,7 @@ function MessageBubbleInner({
       {openTrace && (
         <CryptoTracePanel
           mode={traceMode}
-          envelope={traceEnvelope}
+          envelope={traceEnvelope ?? undefined}
           debug={{
             ...(traceDebug ?? {}),
             loading: traceLoading,
@@ -230,7 +243,7 @@ export const MessageBubble = React.memo(MessageBubbleInner, (prev, next) => {
     prev.message.status === next.message.status &&
     prev.isFirstInGroup === next.isFirstInGroup &&
     prev.isLastInGroup === next.isLastInGroup &&
-    (prev.message as any).envelope === (next.message as any).envelope &&
-    (prev.message as any).cryptoDebug === (next.message as any).cryptoDebug
+    (prev.message as ExtendedChatMessage).envelope === (next.message as ExtendedChatMessage).envelope &&
+    (prev.message as ExtendedChatMessage).cryptoDebug === (next.message as ExtendedChatMessage).cryptoDebug
   );
 });

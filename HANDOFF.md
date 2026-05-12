@@ -918,3 +918,48 @@ Manual test path:
 
 ### Checks Run
 - `cd ui && npm run build` (pass)
+
+## 2026-05-12 - Vercel Build Fix (Invalid Next.js Version)
+
+### Fixed
+- Updated `ui/package.json` Next.js dependency from invalid `^16.2.10` to valid `^16.2.6`.
+- Kept React/ReactDOM and eslint-config-next compatibility unchanged.
+
+### Files Changed
+- `ui/package.json`
+- `ui/package-lock.json` (revalidated via install; no functional dependency drift)
+
+### Commands Run
+- `cd ui && npm install`
+- `cd ui && npm run build`
+
+### Result
+- Build passed successfully on Next.js `16.2.6`.
+
+## 2026-05-12 - Next.js Build Lint/Type Fixes
+
+### Completed
+- Ran `npm install` in `ui`.
+- Replaced explicit `any` usage in targeted files with safer typing (`unknown`, `Record<string, unknown>`, and existing model types).
+- Fixed React hooks purity issue in `MessageList` by removing `Date.now()` from render-time filtering.
+- Preserved behavior for auth, verified connections, encrypted chat/files, signature flows, crypto trace, and env config.
+
+### Files Changed
+- `ui/src/components/MessageList.tsx`
+- `ui/src/components/MessageBubble.tsx`
+- `ui/src/components/MessageComposer.tsx`
+- `ui/src/components/crypto/CryptoTracePanel.tsx`
+- `ui/src/components/attachments/AttachmentPicker.tsx`
+- `ui/src/components/attachments/AttachmentPreview.tsx`
+- `ui/src/providers/WebSocketProvider.tsx`
+- `ui/src/services/websocket.ts`
+- `ui/src/store/useAttachmentStore.ts`
+- `ui/src/types/models.ts`
+
+### Commands Run
+- `cd ui && npm install`
+- `cd ui && npm run build`
+
+### Result
+- Build passed successfully.
+- Remaining output includes non-blocking ESLint warnings for unused symbols in unrelated files.

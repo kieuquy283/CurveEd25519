@@ -50,7 +50,7 @@ function parseIncomingEnvelope(rawText: string) {
   let file: Record<string, unknown> | undefined;
 
   try {
-    const parsed = JSON.parse(rawText);
+    const parsed = JSON.parse(rawText) as Record<string, unknown>;
 
     if (
       parsed &&
@@ -58,7 +58,7 @@ function parseIncomingEnvelope(rawText: string) {
       parsed.type === "file" &&
       parsed.attachment
     ) {
-      const attachment = parsed.attachment;
+      const attachment = parsed.attachment as Record<string, unknown>;
 
       const id =
         typeof attachment.id === "string"
@@ -124,7 +124,7 @@ function parseIncomingEnvelope(rawText: string) {
           dataBase64,
           url,
           uploaded: true,
-          crypto: cryptoInfo,
+          crypto: cryptoInfo as ParsedAttachment["crypto"],
         },
       ];
 
@@ -221,9 +221,8 @@ export function WebSocketProvider({
           text: parsedEnvelope.text,
           type: parsedEnvelope.type,
 
-          file: parsedEnvelope.file as any,
-          attachments:
-            parsedEnvelope.attachments as any,
+          file: parsedEnvelope.file as ChatMessage["file"],
+          attachments: parsedEnvelope.attachments,
 
           envelope:
             Object.keys(envelope).length > 0
@@ -237,13 +236,13 @@ export function WebSocketProvider({
           status: "delivered",
           packetId: packet.packet_id,
 
-          cryptoDirection: "decrypt" as any,
+          cryptoDirection: "decrypt",
           cryptoDebug:
             (payload.debug as Record<
               string,
               unknown
             >) ?? undefined,
-        } as any;
+        };
 
         chatStore.addMessage(message);
 

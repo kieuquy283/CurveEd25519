@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { Attachment } from "@/types/models";
+import { Attachment, AttachmentCryptoInfo } from "@/types/models";
 import { revokePreviewUrl } from "@/services/attachments";
 import CryptoTracePanel from "@/components/crypto/CryptoTracePanel";
 
@@ -10,7 +10,10 @@ export default function AttachmentPreview({
   attachment: Attachment;
 }) {
   const url = attachment.localUrl ?? attachment.url;
-  const crypto = attachment.crypto ?? attachment.metadata?.crypto;
+  const crypto = (
+    attachment.crypto ??
+    (attachment.metadata?.crypto as AttachmentCryptoInfo | undefined)
+  );
   const [openPanel, setOpenPanel] = useState(false);
 
   useEffect(() => {
@@ -80,8 +83,14 @@ export default function AttachmentPreview({
 
       {openPanel && (
         <CryptoTracePanel
-          envelope={attachment.envelope ?? attachment.metadata?.envelope}
-          debug={attachment.debug ?? attachment.metadata?.debug}
+          envelope={
+            attachment.envelope ??
+            (attachment.metadata?.envelope as Record<string, unknown> | undefined)
+          }
+          debug={
+            attachment.debug ??
+            (attachment.metadata?.debug as Record<string, unknown> | undefined)
+          }
           onClose={() => setOpenPanel(false)}
         />
       )}

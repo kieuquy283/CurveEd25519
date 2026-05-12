@@ -16,6 +16,7 @@ import {
 import { useChatStore } from "@/store/useChatStore";
 import { getCurrentUserId } from "@/store/useAuthStore";
 import { getApiBaseUrl } from "@/config/env";
+import { ChatMessage } from "@/types/models";
 const API_BASE_URL = getApiBaseUrl();
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
@@ -66,7 +67,7 @@ export default function AttachmentPicker({
       uploaded: false,
     });
 
-    chatStore.addMessage({
+    const pendingMessage: ChatMessage = {
       id: messageId,
       conversationId,
       from: currentUserId,
@@ -82,7 +83,8 @@ export default function AttachmentPicker({
       },
       attachmentIds: [attachmentId],
       cryptoDirection: "encrypt",
-    } as any);
+    };
+    chatStore.addMessage(pendingMessage);
 
     try {
       const contentB64 = arrayBufferToBase64(await file.arrayBuffer());
@@ -134,7 +136,7 @@ export default function AttachmentPicker({
         payload: {
           envelope: data.envelope,
         },
-      } as any;
+      };
 
       try {
         await websocketService.sendPacket(packet);

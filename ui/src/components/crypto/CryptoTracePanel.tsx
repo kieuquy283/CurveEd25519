@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 
 type CryptoTracePanelProps = {
-  envelope?: any;
-  debug?: any;
+  envelope?: Record<string, unknown>;
+  debug?: Record<string, unknown>;
   mode?: "encrypt" | "decrypt";
   onClose?: () => void;
 };
@@ -43,7 +43,7 @@ function sizeOfBase64(value?: string) {
   }
 }
 
-function sanitizeDebug(debug: any) {
+function sanitizeDebug(debug: Record<string, unknown> | undefined) {
   if (!debug) return {};
 
   const blocked = [
@@ -62,14 +62,15 @@ function sanitizeDebug(debug: any) {
 
   const clone = JSON.parse(JSON.stringify(debug));
 
-  function walk(obj: any) {
+  function walk(obj: unknown) {
     if (!obj || typeof obj !== "object") return;
 
-    for (const key of Object.keys(obj)) {
+    const record = obj as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
       if (blocked.includes(key)) {
-        obj[key] = "[hidden]";
+        record[key] = "[hidden]";
       } else {
-        walk(obj[key]);
+        walk(record[key]);
       }
     }
   }
@@ -77,6 +78,12 @@ function sanitizeDebug(debug: any) {
   walk(clone);
 
   return clone;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function Row({
@@ -133,11 +140,11 @@ export default function CryptoTracePanel({
 }: CryptoTracePanelProps) {
   const safeDebug = useMemo(() => sanitizeDebug(debug), [debug]);
 
-  const header = envelope?.header ?? {};
-  const crypto = header?.crypto ?? {};
-  const sender = header?.sender ?? {};
-  const receiver = header?.receiver ?? {};
-  const signature = envelope?.signature ?? {};
+  const header = asRecord(envelope?.header);
+  const crypto = asRecord(header.crypto);
+  const sender = asRecord(header.sender);
+  const receiver = asRecord(header.receiver);
+  const signature = asRecord(envelope?.signature);
 
   const messageId =
     header?.message_id ??

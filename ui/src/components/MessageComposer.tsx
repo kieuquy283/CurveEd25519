@@ -14,7 +14,7 @@ import {
   getConversationApiBaseUrl,
 } from "@/services/conversationCrypto";
 import { buildApiBaseCandidates } from "@/config/env";
-import { SignedFileContainer, VerificationResult } from "@/types/models";
+import { ChatMessage, SignedFileContainer, VerificationResult } from "@/types/models";
 
 import { buildPacketId, buildTimestamp, PacketType } from "@/types/packets";
 
@@ -264,7 +264,7 @@ export function MessageComposer({ conversationId }: Props) {
         })
       : trimmed;
 
-    chatStore.addMessage({
+    const outgoingMessage: ChatMessage = {
       id: messageId,
       conversationId,
       from: currentUserId,
@@ -288,7 +288,8 @@ export function MessageComposer({ conversationId }: Props) {
               },
             ]
           : [],
-    } as any);
+    };
+    chatStore.addMessage(outgoingMessage);
 
     setText("");
     setPendingFile(null);
@@ -305,7 +306,7 @@ export function MessageComposer({ conversationId }: Props) {
         },
         cryptoDirection: "encrypt",
         status: "sent",
-      } as any);
+      });
 
       const packet = {
         packet_id: buildPacketId(),
@@ -319,7 +320,7 @@ export function MessageComposer({ conversationId }: Props) {
       };
 
       try {
-        await websocketService.sendPacket(packet as any);
+        await websocketService.sendPacket(packet);
       } catch (wsError) {
         console.warn(
           "[Composer] WebSocket not connected. Message encrypted and stored locally:",

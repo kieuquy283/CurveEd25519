@@ -41,7 +41,7 @@ export interface ChatMessage {
   attachments?: Attachment[];
 
   /** Raw envelope when message was received/sent (encrypted envelope JSON) */
-  envelope?: any;
+  envelope?: Record<string, unknown>;
 
   cryptoDebug?: unknown;
   cryptoDirection?: "encrypt" | "decrypt";
@@ -254,7 +254,7 @@ export interface Attachment {
   uploaded: boolean;
 
   uploadProgress?: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   crypto?: AttachmentCryptoInfo;
   envelope?: Record<string, unknown>;
   debug?: Record<string, unknown> | null;

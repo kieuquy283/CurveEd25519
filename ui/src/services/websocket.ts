@@ -300,7 +300,7 @@ class WebSocketService {
   }
 
   private async handleIncomingEncryptedMessage(
-    packet: TransportPacket<any>
+    packet: TransportPacket<Record<string, unknown>>
   ): Promise<void> {
     try {
       if (!packet.payload?.envelope) {

@@ -11,7 +11,7 @@ interface AttachmentStore {
 
   addLocalAttachment: (a: Attachment) => void;
   setProgress: (id: string, p: number) => void;
-  markUploaded: (id: string, url?: string, metadata?: Record<string, any>) => void;
+  markUploaded: (id: string, url?: string, metadata?: Record<string, unknown>) => void;
   getAttachment: (id: string) => Attachment | undefined;
   reset: () => void;
 }
