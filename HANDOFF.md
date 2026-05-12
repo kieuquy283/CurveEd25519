@@ -1759,3 +1759,47 @@ Recommended columns/indexes are aligned with:
 2. Verify `/api/conversations` and `/api/notifications` calls are no longer blocked by CORS.
 3. If Supabase table missing, API returns safe JSON warning instead of crashing UI.
 4. Confirm `/ws` connects or logs explicit backend reason without immediate silent close loop.
+
+## 2026-05-12 - Signed-file Attachment UX After Encrypted Chat Delivery
+
+### Fixed
+- Signed-file containers sent as encrypted chat attachments are now detected directly from attachment payloads and rendered with a dedicated signature panel.
+- Message envelope/decryption trace remains separate and available via explicit button.
+- Attachment click behavior no longer forces envelope trace only.
+
+### Frontend changes
+- `ui/src/services/signedFile.ts`
+  - Added stronger attachment detection for signed container:
+    - filename suffix `.signed.json`
+    - JSON mime context
+    - base64 decode + JSON parse + field normalization (`mime_type`, `fileName`, `dataBase64`).
+  - Added helper alias `detectSignedFileContainerFromAttachment(...)`.
+  - Verify call now supports `expected_signer`.
+- `ui/src/services/signature.ts`
+  - Extended `verifySignedFile` request typing with optional `expected_signer`.
+- `ui/src/components/attachments/AttachmentPreview.tsx`
+  - Added Digital Signature panel (`Chu ky so / Digital signature`) for detected signed containers.
+  - Shows signer, signed_at, algorithm, hash, verification status, trusted signer/connection.
+  - Buttons:
+    - `Xac minh chu ky`
+    - `Tai signed container` (always)
+    - `Tai file goc` (only when verify valid and original file returned)
+  - Added one-shot auto-verify guarded by ref (no render loop).
+  - Added explicit `Crypto trace / Envelope` button; attachment interaction is no longer hijacked.
+- `ui/src/components/MessageBubble.tsx`
+  - Removed wrapper click on entire attachment block that forced trace opening.
+  - Added separate `Crypto trace / Envelope` button at bubble level.
+
+### Backend verify-file compatibility
+- Existing `/api/signature/verify-file` flow already supports normalized signed-file field aliases and trusted-key verification fallback.
+- No backend changes required in this pass.
+
+### Files changed
+- `ui/src/services/signedFile.ts`
+- `ui/src/services/signature.ts`
+- `ui/src/components/attachments/AttachmentPreview.tsx`
+- `ui/src/components/MessageBubble.tsx`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+- `cd ui && npm run build` (pass; existing unrelated warnings remain)

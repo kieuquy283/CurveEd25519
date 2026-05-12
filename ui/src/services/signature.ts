@@ -60,6 +60,7 @@ export async function signFile(params: {
 export async function verifySignedFile(params: {
   signed_file: SignedFileContainer;
   verifier?: string;
+  expected_signer?: string;
 }): Promise<VerificationResult> {
   const bases = buildApiBaseCandidates(getApiBaseUrl());
   let lastNetworkError: unknown;

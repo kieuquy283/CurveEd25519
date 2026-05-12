@@ -222,13 +222,21 @@ function MessageBubbleInner({
             </button>
           )}
 
-          <div
-            onClick={canOpenTrace ? handleOpenTrace : undefined}
-            className={canOpenTrace ? "cursor-pointer" : ""}
-            title={traceHint}
-          >
+          <div>
             <AttachmentBubble message={message} />
           </div>
+
+          {canOpenTrace && (
+            <div className={`${isOutgoing ? "text-right" : "text-left"} px-1`}>
+              <button
+                type="button"
+                onClick={handleOpenTrace}
+                className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+              >
+                Crypto trace / Envelope
+              </button>
+            </div>
+          )}
 
           {traceHint && (
             <div className="px-2 text-xs text-zinc-400">

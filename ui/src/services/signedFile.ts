@@ -52,12 +52,17 @@ function normalizeSignedFile(obj: Record<string, unknown>): SignedFileContainer 
 }
 
 export function detectSignedFileContainer(attachment: AttachmentLike): SignedFileContainer | null {
+  const fileName = (attachment.fileName || "").toLowerCase();
+  const mimeType = (attachment.mimeType || "").toLowerCase();
+  const looksLikeSignedContainer =
+    fileName.endsWith(".signed.json") || mimeType.includes("application/json");
+
   const fromDirect = attachment.content_b64 || attachment.dataBase64 || "";
   let payloadBase64 = fromDirect.trim();
   if (!payloadBase64 && attachment.url?.startsWith("data:")) {
     payloadBase64 = decodeDataUrl(attachment.url) ?? "";
   }
-  if (!payloadBase64) return null;
+  if (!payloadBase64 || !looksLikeSignedContainer) return null;
   const text = b64ToUtf8(payloadBase64);
   if (!text) return null;
   try {
@@ -68,13 +73,18 @@ export function detectSignedFileContainer(attachment: AttachmentLike): SignedFil
   }
 }
 
+export function detectSignedFileContainerFromAttachment(attachment: AttachmentLike): SignedFileContainer | null {
+  return detectSignedFileContainer(attachment);
+}
+
 export async function verifySignedContainer(
   signedFile: SignedFileContainer,
-  verifier?: string
+  verifier?: string,
+  expectedSigner?: string
 ): Promise<VerificationResult> {
   return verifySignedFile({
     signed_file: signedFile,
     verifier,
+    expected_signer: expectedSigner,
   });
 }
-
