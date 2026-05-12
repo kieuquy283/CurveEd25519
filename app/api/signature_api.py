@@ -47,6 +47,7 @@ class SignFileRequest(BaseModel):
 class VerifyFileRequest(BaseModel):
     signed_file: dict[str, Any]
     verifier: str | None = None
+    expected_signer: str | None = None
 
 
 SIGNED_FIELDS = [
@@ -120,6 +121,17 @@ def _validate_container_fields(container: dict[str, Any]) -> None:
     for field in SIGNED_FIELDS + ["signature"]:
         if field not in container:
             raise HTTPException(status_code=400, detail=f"Missing field: {field}")
+
+
+def _normalize_signed_file_fields(container: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(container)
+    if "mimeType" not in normalized and "mime_type" in normalized:
+        normalized["mimeType"] = normalized.get("mime_type")
+    if "filename" not in normalized and "fileName" in normalized:
+        normalized["filename"] = normalized.get("fileName")
+    if "content_b64" not in normalized and "dataBase64" in normalized:
+        normalized["content_b64"] = normalized.get("dataBase64")
+    return normalized
 
 
 @router.post("/sign-file")
@@ -204,7 +216,7 @@ def profile_status(user: str):
 
 @router.post("/verify-file")
 def verify_file(req: VerifyFileRequest):
-    signed_file = req.signed_file
+    signed_file = _normalize_signed_file_fields(req.signed_file)
 
     _validate_container_fields(signed_file)
     _decode_b64(str(signed_file["content_b64"]))
@@ -223,6 +235,18 @@ def verify_file(req: VerifyFileRequest):
         }
 
     signer = str(signed_file.get("signer"))
+    if req.expected_signer and signer.strip().lower() != req.expected_signer.strip().lower():
+        return {
+            "ok": True,
+            "valid": False,
+            "message": "Signer mismatch.",
+            "debug": {
+                "algorithm": "Ed25519",
+                "hash": "SHA-256",
+                "signer": signer,
+                "trusted": False,
+            },
+        }
 
     trusted = False
     trusted_public_key = str(signed_file.get("signer_public_key"))

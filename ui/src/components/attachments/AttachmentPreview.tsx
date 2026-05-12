@@ -1,8 +1,11 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Attachment, AttachmentCryptoInfo } from "@/types/models";
 import { revokePreviewUrl } from "@/services/attachments";
 import CryptoTracePanel from "@/components/crypto/CryptoTracePanel";
+import { detectSignedFileContainer, verifySignedContainer } from "@/services/signedFile";
+import { useAuthStore } from "@/store/useAuthStore";
+import { VerificationResult } from "@/types/models";
 
 export default function AttachmentPreview({
   attachment,
@@ -15,12 +18,54 @@ export default function AttachmentPreview({
     (attachment.metadata?.crypto as AttachmentCryptoInfo | undefined)
   );
   const [openPanel, setOpenPanel] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<VerificationResult | null>(null);
+  const [verifyResultFor, setVerifyResultFor] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const currentUserEmail = useAuthStore((s) => s.currentUser?.email);
+  const signedContainer = useMemo(
+    () => detectSignedFileContainer(attachment),
+    [attachment]
+  );
 
   useEffect(() => {
     return () => {
       if (attachment.localUrl) revokePreviewUrl(attachment.id);
     };
   }, [attachment]);
+
+  const activeVerifyResult = verifyResultFor === attachment.id ? verifyResult : null;
+
+  const runVerify = useCallback(async () => {
+    if (!signedContainer || verifying) return;
+    setVerifying(true);
+    try {
+      const result = await verifySignedContainer(signedContainer, currentUserEmail);
+      setVerifyResult(result);
+      setVerifyResultFor(attachment.id);
+    } catch (err) {
+      setVerifyResult({
+        ok: false,
+        valid: false,
+        message: err instanceof Error ? err.message : "Xác minh thất bại.",
+      });
+      setVerifyResultFor(attachment.id);
+    } finally {
+      setVerifying(false);
+    }
+  }, [signedContainer, currentUserEmail, verifying, attachment.id]);
+
+  useEffect(() => {
+    if (!signedContainer || activeVerifyResult || verifying) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void runVerify();
+  }, [signedContainer, activeVerifyResult, verifying, runVerify]);
+
+  const downloadBase64 = (filename: string, mimeType: string, base64: string) => {
+    const link = document.createElement("a");
+    link.href = `data:${mimeType};base64,${base64}`;
+    link.download = filename;
+    link.click();
+  };
 
   if (!url) {
     return (
@@ -93,6 +138,76 @@ export default function AttachmentPreview({
           }
           onClose={() => setOpenPanel(false)}
         />
+      )}
+
+      {signedContainer && (
+        <div className="mt-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
+          <div className="font-semibold mb-1">Chữ ký số</div>
+          <div>Signer: {signedContainer.signer || "unknown"}</div>
+          <div>Signed at: {signedContainer.signed_at || "-"}</div>
+          <div>Algorithm: Ed25519</div>
+          <div>Hash: SHA-256</div>
+          <div>
+            Verification:{" "}
+            {verifying
+              ? "Đang xác minh"
+              : activeVerifyResult
+                ? activeVerifyResult.valid
+                  ? "Hợp lệ"
+                  : "Không hợp lệ"
+                : "Chưa xác minh"}
+          </div>
+          {activeVerifyResult?.debug && (
+            <div>
+              Trusted connection: {(activeVerifyResult.debug.trusted ?? activeVerifyResult.debug.trusted_connection) ? "Có" : "Không"}
+            </div>
+          )}
+          {activeVerifyResult && !activeVerifyResult.valid && (
+            <div className="text-red-300 mt-1">{activeVerifyResult.message}</div>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2">
+            {!activeVerifyResult && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setVerifying(true);
+                  await runVerify();
+                }}
+                className="rounded border border-blue-400/50 px-2 py-1 text-blue-100"
+              >
+                Xác minh chữ ký
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() =>
+                downloadBase64(
+                  `${signedContainer.filename}.signed.json`,
+                  "application/json",
+                  attachment.dataBase64 || attachment.content_b64 || ""
+                )
+              }
+              className="rounded border border-blue-400/50 px-2 py-1 text-blue-100"
+            >
+              Tải signed container
+            </button>
+            {activeVerifyResult?.valid && activeVerifyResult.file?.content_b64 && (
+              <button
+                type="button"
+                onClick={() =>
+                  downloadBase64(
+                    activeVerifyResult.file?.filename || signedContainer.filename,
+                    activeVerifyResult.file?.mime_type || signedContainer.mimeType,
+                    activeVerifyResult.file?.content_b64 || ""
+                  )
+                }
+                className="rounded border border-emerald-400/50 px-2 py-1 text-emerald-100"
+              >
+                Tải file gốc
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

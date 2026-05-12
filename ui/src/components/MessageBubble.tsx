@@ -117,14 +117,34 @@ function MessageBubbleInner({
     if (isOutgoing) {
       setTraceMode("encrypt");
       setTraceEnvelope(envelope);
-      setTraceDebug(existingDebug);
+      setTraceDebug({
+        ...(existingDebug ?? {}),
+        sender:
+          (existingDebug as Record<string, unknown> | null)?.signature_key_owner ??
+          (existingDebug as Record<string, unknown> | null)?.sender ??
+          message.from,
+        receiver:
+          (existingDebug as Record<string, unknown> | null)?.encryption_key_owner ??
+          (existingDebug as Record<string, unknown> | null)?.receiver ??
+          message.to,
+      });
       setOpenTrace(true);
       return;
     }
 
     setTraceMode("decrypt");
     setTraceEnvelope(envelope);
-    setTraceDebug(existingDebug);
+    setTraceDebug({
+      ...(existingDebug ?? {}),
+      sender:
+        (existingDebug as Record<string, unknown> | null)?.signature_key_owner ??
+        (existingDebug as Record<string, unknown> | null)?.sender ??
+        message.from,
+      receiver:
+        (existingDebug as Record<string, unknown> | null)?.encryption_key_owner ??
+        (existingDebug as Record<string, unknown> | null)?.receiver ??
+        message.to,
+    });
     setOpenTrace(true);
 
     if (existingDebug) return;
@@ -154,6 +174,14 @@ function MessageBubbleInner({
 
       setTraceDebug({
         ...(data.debug ?? {}),
+        sender:
+          data.debug?.signature_key_owner ??
+          data.debug?.sender ??
+          message.from,
+        receiver:
+          data.debug?.encryption_key_owner ??
+          data.debug?.receiver ??
+          currentUserId,
         verified: data.debug?.verified ?? data.verified ?? data.message?.verified,
         plaintext_size:
           data.debug?.plaintext_size ??

@@ -27,6 +27,8 @@ export default function AttachmentBubble({ message }: { message: ChatMessage }) 
               message.file.mime_type ??
               "application/octet-stream",
             size: message.file.size ?? 0,
+            content_b64: message.file.content_b64 ?? message.file.dataBase64,
+            dataBase64: message.file.dataBase64 ?? message.file.content_b64,
             url:
               message.file.url ??
               (message.file.dataBase64 || message.file.content_b64

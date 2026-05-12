@@ -248,6 +248,8 @@ export interface Attachment {
   size: number;
 
   url?: string;
+  content_b64?: string;
+  dataBase64?: string;
 
   localUrl?: string;
 
@@ -327,15 +329,21 @@ export interface VerificationResult {
   ok: boolean;
   valid: boolean;
   message: string;
+  signer?: string;
+  trusted?: boolean;
+  algorithm?: string;
+  signed_at?: string;
   file?: {
     filename: string;
     mime_type: string;
     content_b64: string;
     size: number;
   };
-  debug: {
+  debug?: {
     algorithm: string;
     hash: string;
     signer: string;
+    trusted?: boolean;
+    trusted_connection?: boolean;
   };
 }

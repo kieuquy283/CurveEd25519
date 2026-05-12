@@ -1564,3 +1564,63 @@ The same `EmailService` is used by and now supports Resend for:
 
 ### Checks run
 - `python -m compileall app server.py` (pass)
+
+## 2026-05-12 - Signed-file Attachment Detection + Verification in Chat
+
+### Fixed
+- Receiver-side encrypted attachment rendering now detects embedded signed-file JSON containers and shows signature verification UI without removing envelope crypto trace.
+- Message envelope crypto/decrypt trace remains separate and unchanged.
+
+### Frontend changes
+- Added signed-file detection helper service:
+  - `ui/src/services/signedFile.ts`
+  - Detects signed-file container from attachment base64/data URL content.
+  - Normalizes compatible field names (`mimeType`/`mime_type`, `filename`/`fileName`, `content_b64`/`dataBase64`).
+- Attachment preview now includes `Ch? ký s?` section when signed container is detected:
+  - signer
+  - signed_at
+  - algorithm Ed25519
+  - hash SHA-256
+  - verification status (valid/invalid/pending)
+  - trusted connection status when available from backend debug
+  - buttons:
+    - `Xác minh ch? ký` (manual fallback)
+    - `T?i signed container`
+    - `T?i file g?c` (when valid)
+- Auto-verify runs once for detected signed container using backend `/api/signature/verify-file`.
+- `MessageBubble` crypto trace now fills sender/receiver from trusted debug metadata when available:
+  - sender fallback: `signature_key_owner` -> packet sender
+  - receiver fallback: `encryption_key_owner` -> packet receiver/current user
+- Attachment model extended with optional `content_b64`/`dataBase64` for signed container handling.
+
+### Backend changes
+- `app/api/signature_api.py` verify endpoint now tolerates alternate signed-file field names via normalization before canonical verification.
+- Added optional `expected_signer` check to verification request model.
+- Signature validation behavior preserved:
+  - canonical payload verification with Ed25519
+  - trusted key path when verifier has verified connection
+  - invalid on tampering
+
+### Files changed
+- `ui/src/services/signedFile.ts` (new)
+- `ui/src/components/attachments/AttachmentPreview.tsx`
+- `ui/src/components/attachments/AttachmentBubble.tsx`
+- `ui/src/components/MessageBubble.tsx`
+- `ui/src/types/models.ts`
+- `app/api/signature_api.py`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+- `cd ui && npm run build` (pass; existing unrelated warnings only)
+
+### Manual test
+1. Login sender and receiver in separate browsers.
+2. Ensure verified connection exists.
+3. Sign file in signature dialog.
+4. Send signed JSON/container via encrypted file chat.
+5. Receiver sees:
+   - attachment block
+   - message envelope crypto trace
+   - `Ch? ký s?` verification section.
+6. Verify valid status and `T?i file g?c` works.
+7. Modify signed JSON payload and verify result becomes invalid.
