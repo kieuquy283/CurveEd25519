@@ -35,8 +35,16 @@ export async function signFile(params: {
     }
 
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Sign-file failed (${response.status}) at ${base}: ${text}`);
+      let detail = "";
+      try {
+        const json = (await response.json()) as { detail?: string };
+        detail = json.detail ?? "";
+      } catch {
+        detail = await response.text();
+      }
+      throw new Error(
+        `Sign-file failed (${response.status}) at ${base}: ${detail || "Unknown error"}`
+      );
     }
 
     return response.json();

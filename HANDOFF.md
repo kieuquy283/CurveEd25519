@@ -1247,3 +1247,43 @@ The same `EmailService` is used by and now supports Resend for:
 
 ### Checks run
 - `python -m compileall app server.py` (pass)
+
+## 2026-05-12 - File Signing Failure Fix (Auth signer/profile)
+
+### Fixed
+- Frontend signature flow now uses authenticated user identity directly (email/id from auth store), never hardcoded `frontend` for file signing.
+- If no authenticated user exists, signing is blocked with message:
+  - `Vui lòng dang nh?p tru?c khi ký file.`
+- Frontend now surfaces backend sign-file error detail instead of only generic failure text.
+
+### Backend signing fixes
+- `POST /api/signature/sign-file` now resolves signer by account email/user_id, not only raw profile username lookup.
+- Added robust signer-profile resolution:
+  - load account from `accounts.json`
+  - load profile by `profile_id` or username
+  - if missing, safely create profile for demo flow and persist `profile_id` back to account
+- Added explicit key validation for signer profile; if missing keys returns clear error:
+  - `Signer profile or Ed25519 signing key not found.`
+- Added diagnostic endpoint:
+  - `GET /api/signature/profile-status?user=<email_or_id>`
+  - returns account/profile/key presence flags without exposing private keys.
+
+### DATA_DIR and Render compatibility
+- Auth, connections, and signature API routers now honor `DATA_DIR` (default `data`).
+- Ensures `accounts.json` and `profiles/` are created when missing.
+- Reduces account/profile path mismatches across services in deployed environments.
+
+### Files changed
+- `app/api/signature_api.py`
+- `app/api/auth_api.py`
+- `app/api/connection_api.py`
+- `ui/src/components/signature/SignatureDialog.tsx`
+- `ui/src/services/signature.ts`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+- `cd ui && npm run build` (pass; existing unrelated warnings only)
+
+### Render limitation note
+- Render free filesystem is ephemeral/non-durable. Local JSON data (`accounts.json`, `profiles/`, `connections.json`) can be lost on restart/redeploy.
+- Current behavior regenerates missing signer profiles for demo continuity, but durable storage is still recommended for production.

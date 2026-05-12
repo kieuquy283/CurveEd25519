@@ -2,14 +2,19 @@
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from pathlib import Path
+import os
 
 from app.services.connection_service import ConnectionService
 
 router = APIRouter(prefix="/api/connections", tags=["connections"])
+DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+(DATA_DIR / "profiles").mkdir(parents=True, exist_ok=True)
 service = ConnectionService(
-    connections_path="data/connections.json",
-    accounts_path="data/accounts.json",
-    profiles_dir="data/profiles",
+    connections_path=str(DATA_DIR / "connections.json"),
+    accounts_path=str(DATA_DIR / "accounts.json"),
+    profiles_dir=str(DATA_DIR / "profiles"),
 )
 
 

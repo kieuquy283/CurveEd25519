@@ -5,7 +5,7 @@ import { Download, Loader2, X } from "lucide-react";
 
 import { signFile } from "@/services/signature";
 import { useSignatureStore } from "@/store/useSignatureStore";
-import { getCurrentUserId } from "@/store/useAuthStore";
+import { useAuthStore } from "@/store/useAuthStore";
 import { SignedFileContainer } from "@/types/models";
 
 interface SignatureDialogProps {
@@ -67,6 +67,7 @@ export default function SignatureDialog({
 
   const signedFiles = useSignatureStore((s) => s.signedFiles);
   const addSignedFile = useSignatureStore((s) => s.addSignedFile);
+  const currentUser = useAuthStore((s) => s.currentUser);
 
   const fileInfo = useMemo(() => {
     if (!selectedFile) return null;
@@ -88,12 +89,21 @@ export default function SignatureDialog({
 
   const handleSignFile = async () => {
     if (!selectedFile || isSigning) return;
+    const signer = currentUser?.email || currentUser?.id || "";
+    if (!signer) {
+      setError("Vui lòng đăng nhập trước khi ký file.");
+      return;
+    }
     try {
       setIsSigning(true);
       setError("");
       const content_b64 = await fileToBase64(selectedFile);
+      console.info("[SignatureDialog] Signing file", {
+        endpoint: "/api/signature/sign-file",
+        signer,
+      });
       const result = await signFile({
-        signer: getCurrentUserId(),
+        signer,
         filename: selectedFile.name,
         mime_type: selectedFile.type || "application/octet-stream",
         content_b64,
@@ -117,9 +127,12 @@ export default function SignatureDialog({
       setLatestSignedContainer(result.signed_file);
     } catch (signError) {
       console.error("[SignatureDialog] Sign failed:", signError);
-      setError(
-        "Không thể ký file. Vui lòng kiểm tra backend hoặc profile ký."
-      );
+      const message =
+        signError instanceof Error ? signError.message : "Unknown error";
+      const detail = message.includes(":")
+        ? message.split(":").slice(1).join(":").trim()
+        : message;
+      setError(detail || "Không thể ký file. Vui lòng kiểm tra backend hoặc profile ký.");
     } finally {
       setIsSigning(false);
     }

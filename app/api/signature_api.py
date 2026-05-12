@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -12,13 +13,25 @@ from pydantic import BaseModel
 
 from app.services.crypto_service import CryptoService
 from app.services.connection_service import ConnectionService
+from app.services.auth_service import AuthService
+from app.profiles.profile_service import ProfileService
 
 router = APIRouter(prefix="/api/signature", tags=["signature"])
+DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
+ACCOUNTS_PATH = DATA_DIR / "accounts.json"
+PROFILES_DIR = DATA_DIR / "profiles"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+if not ACCOUNTS_PATH.exists():
+    ACCOUNTS_PATH.write_text("[]", encoding="utf-8")
+
 connections = ConnectionService(
-    connections_path="data/connections.json",
-    accounts_path="data/accounts.json",
-    profiles_dir="data/profiles",
+    connections_path=str(DATA_DIR / "connections.json"),
+    accounts_path=str(ACCOUNTS_PATH),
+    profiles_dir=str(PROFILES_DIR),
 )
+auth = AuthService(accounts_path=str(ACCOUNTS_PATH), profiles_dir=str(PROFILES_DIR))
+profiles = ProfileService(profiles_dir=str(PROFILES_DIR))
 
 
 class SignFileRequest(BaseModel):
@@ -60,6 +73,69 @@ def _load_profile_by_username(username: str) -> dict[str, Any]:
     raise HTTPException(status_code=404, detail=f"Profile not found: {username}")
 
 
+def _resolve_account(identifier: str) -> dict[str, Any]:
+    needle = identifier.strip().lower()
+    accounts = auth._load_accounts()
+    for account in accounts:
+        email = str(account.get("email") or "").strip().lower()
+        user_id = str(account.get("user_id") or email).strip().lower()
+        if needle in {email, user_id}:
+            if "user_id" not in account:
+                account["user_id"] = user_id
+                auth._save_accounts(accounts)
+            return account
+    raise HTTPException(status_code=404, detail=f"Signer account not found: {identifier}")
+
+
+def _ensure_profile_for_account(account: dict[str, Any]) -> dict[str, Any]:
+    email = str(account.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Signer account has no email.")
+
+    profile_id = str(account.get("profile_id") or "").strip()
+    if profile_id:
+        try:
+            profile = profiles.load_profile(profile_id)
+            _validate_signing_profile(profile)
+            return profile
+        except Exception:
+            pass
+
+    by_username = profiles.find_by_username(email)
+    if by_username:
+        _validate_signing_profile(by_username)
+        account["profile_id"] = by_username.get("profile_id")
+        accounts = auth._load_accounts()
+        for row in accounts:
+            if str(row.get("email") or "").strip().lower() == email:
+                row["profile_id"] = by_username.get("profile_id")
+                break
+        auth._save_accounts(accounts)
+        return by_username
+
+    profile = profiles.create_profile(
+        username=email,
+        display_name=str(account.get("display_name") or email),
+        save=True,
+    )
+    account["profile_id"] = profile.get("profile_id")
+    accounts = auth._load_accounts()
+    for row in accounts:
+        if str(row.get("email") or "").strip().lower() == email:
+            row["profile_id"] = profile.get("profile_id")
+            break
+    auth._save_accounts(accounts)
+    _validate_signing_profile(profile)
+    return profile
+
+
+def _validate_signing_profile(profile: dict[str, Any]) -> None:
+    ed = profile.get("ed25519") or {}
+    x = profile.get("x25519") or {}
+    if not ed.get("private_key") or not ed.get("public_key") or not x.get("public_key"):
+        raise HTTPException(status_code=404, detail="Signer profile or Ed25519 signing key not found.")
+
+
 def _decode_b64(value: str) -> bytes:
     try:
         return base64.b64decode(value.encode("utf-8"), validate=True)
@@ -80,8 +156,12 @@ def _validate_container_fields(container: dict[str, Any]) -> None:
 
 @router.post("/sign-file")
 def sign_file(req: SignFileRequest):
+    signer = req.signer.strip().lower()
+    if not signer:
+        raise HTTPException(status_code=400, detail="Signer is required.")
     file_bytes = _decode_b64(req.content_b64)
-    profile = _load_profile_by_username(req.signer)
+    account = _resolve_account(signer)
+    profile = _ensure_profile_for_account(account)
     signer_public_key = CryptoService._get_ed25519_public_key_b64(profile)
     signer_private_key = CryptoService._get_ed25519_private_key_b64(profile)
 
@@ -94,11 +174,41 @@ def sign_file(req: SignFileRequest):
         "mimeType": req.mime_type or "application/octet-stream",
         "size": len(file_bytes),
         "content_b64": req.content_b64,
-        "signer": profile.get("username") or req.signer,
+        "signer": profile.get("username") or signer,
         "signer_public_key": signer_public_key,
         "algorithm": "Ed25519",
         "hash": "SHA-256",
         "signed_at": signed_at,
+    }
+
+
+@router.get("/profile-status")
+def profile_status(user: str):
+    user_norm = user.strip().lower()
+    try:
+        account = _resolve_account(user_norm)
+        account_exists = True
+    except HTTPException:
+        account = None
+        account_exists = False
+
+    profile = None
+    if account:
+        try:
+            profile = _ensure_profile_for_account(account)
+        except HTTPException:
+            profile = None
+
+    ed = (profile or {}).get("ed25519") or {}
+    x = (profile or {}).get("x25519") or {}
+    return {
+        "ok": True,
+        "user": user_norm,
+        "account_exists": account_exists,
+        "profile_exists": profile is not None,
+        "has_ed25519_private_key": bool(ed.get("private_key")),
+        "has_ed25519_public_key": bool(ed.get("public_key")),
+        "has_x25519_public_key": bool(x.get("public_key")),
     }
 
     payload = _canonical_payload_bytes(signed_file)

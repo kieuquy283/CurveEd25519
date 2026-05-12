@@ -3,11 +3,19 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime, timezone
+from pathlib import Path
+import os
 
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-service = AuthService(accounts_path="data/accounts.json", profiles_dir="data/profiles")
+DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+(DATA_DIR / "profiles").mkdir(parents=True, exist_ok=True)
+service = AuthService(
+    accounts_path=str(DATA_DIR / "accounts.json"),
+    profiles_dir=str(DATA_DIR / "profiles"),
+)
 
 
 def _log(message: str) -> None:
