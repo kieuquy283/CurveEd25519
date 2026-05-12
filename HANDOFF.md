@@ -1287,3 +1287,46 @@ The same `EmailService` is used by and now supports Resend for:
 ### Render limitation note
 - Render free filesystem is ephemeral/non-durable. Local JSON data (`accounts.json`, `profiles/`, `connections.json`) can be lost on restart/redeploy.
 - Current behavior regenerates missing signer profiles for demo continuity, but durable storage is still recommended for production.
+
+## 2026-05-12 - Production Registration/Profile Visibility Fix
+
+### Fixed
+- Unified account/profile lookup and signing path to consistently use normalized email:
+  - `normalized_email = email.strip().lower()`
+- Added robust logging for register/login/verify/profile-status lookups with normalized email and accounts path.
+- Fixed `signature_api` sign route regression and restored proper sign response flow.
+- `sign-file` now returns clear account-missing error:
+  - `Account not found. Please register and verify this email first.`
+- `profile-status` now uses same Auth/Profile services and reports both X25519 key flags (private/public).
+
+### New diagnostic endpoint
+- `GET /api/auth/debug-user?email=<email>`
+- Response includes non-secret diagnostics:
+  - normalized email
+  - data/accounts/profiles paths
+  - account/profile existence and verification
+  - account id/profile_id fields
+  - key presence booleans (no key material)
+
+### DATA_DIR consistency
+- Auth + signature + connection APIs use `DATA_DIR` (default `./data`) and ensure dirs/files exist.
+- This reduces mismatches where registration writes one path and signing checks another path.
+
+### Files changed
+- `app/api/auth_api.py`
+- `app/api/signature_api.py`
+- `app/services/auth_service.py`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+
+### Post-deploy test
+1. Register `kieuquyvp@gmail.com`.
+2. Verify email.
+3. Login.
+4. GET `/api/auth/debug-user?email=kieuquyvp@gmail.com`.
+5. GET `/api/signature/profile-status?user=kieuquyvp@gmail.com`.
+6. Both should show `account_exists=true` and `profile_exists=true`.
+
+### Render note
+- Render free filesystem is ephemeral; JSON account/profile files are not durable across rebuild/restart.

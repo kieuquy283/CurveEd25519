@@ -51,6 +51,7 @@ class AuthService:
 
     def register(self, *, email: str, display_name: str, password: str) -> AuthResult:
         normalized_email = self._normalize_email(email)
+        _log(f"register lookup normalized_email={normalized_email} accounts_path={self.accounts_path}")
         self._validate_email(normalized_email)
         self._validate_password(password)
 
@@ -89,6 +90,7 @@ class AuthService:
                 "profile_id": profile.get("profile_id"),
             }
             accounts.append(account)
+            _log(f"account created email={normalized_email}")
         else:
             account["user_id"] = str(account.get("user_id") or normalized_email).strip().lower()
             account["display_name"] = display_name.strip() or account.get("display_name") or normalized_email
@@ -133,6 +135,7 @@ class AuthService:
 
     def login(self, *, email: str, password: str) -> dict[str, Any]:
         normalized_email = self._normalize_email(email)
+        _log(f"login lookup normalized_email={normalized_email} accounts_path={self.accounts_path}")
         accounts = self._load_accounts()
         account = self._find_account(accounts, normalized_email)
 
@@ -167,6 +170,7 @@ class AuthService:
 
     def verify_email(self, *, email: str, code: str) -> None:
         normalized_email = self._normalize_email(email)
+        _log(f"verify-email lookup normalized_email={normalized_email}")
         accounts = self._load_accounts()
         account = self._require_account(accounts, normalized_email)
 
@@ -335,8 +339,47 @@ class AuthService:
             display_name=account.get("display_name") or email,
             save=True,
         )
+        _log(f"profile auto-created email={email}")
         account["profile_id"] = profile.get("profile_id")
         return profile
+
+    def debug_user_status(self, email: str) -> dict[str, Any]:
+        normalized_email = self._normalize_email(email)
+        accounts = self._load_accounts()
+        account = self._find_account(accounts, normalized_email)
+        account_exists = account is not None
+        account_verified = bool(account.get("verified")) if account else False
+
+        profile = None
+        if account:
+            profile_id = str(account.get("profile_id") or "").strip()
+            if profile_id:
+                try:
+                    profile = self.profile_service.load_profile(profile_id)
+                except Exception:
+                    profile = None
+            if profile is None:
+                profile = self.profile_service.find_by_username(normalized_email)
+
+        ed = (profile or {}).get("ed25519") or {}
+        x = (profile or {}).get("x25519") or {}
+
+        return {
+            "ok": True,
+            "normalized_email": normalized_email,
+            "account_exists": account_exists,
+            "account_verified": account_verified,
+            "account_keys_or_id_fields": {
+                "user_id": str((account or {}).get("user_id") or ""),
+                "profile_id": str((account or {}).get("profile_id") or ""),
+            },
+            "profile_exists": profile is not None,
+            "profile_id": str((profile or {}).get("profile_id") or ""),
+            "has_ed25519_private_key": bool(ed.get("private_key")),
+            "has_ed25519_public_key": bool(ed.get("public_key")),
+            "has_x25519_private_key": bool(x.get("private_key")),
+            "has_x25519_public_key": bool(x.get("public_key")),
+        }
 
     def _load_accounts(self) -> list[dict[str, Any]]:
         try:

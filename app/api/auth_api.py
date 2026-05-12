@@ -182,3 +182,14 @@ def test_email(req: TestEmailRequest):
         "sent": False,
         "error": error or "Email send failed",
     }
+
+
+@router.get("/debug-user")
+def debug_user(email: str):
+    normalized_email = email.strip().lower()
+    _log(f"GET /api/auth/debug-user normalized_email={normalized_email}")
+    status = service.debug_user_status(normalized_email)
+    status["data_dir"] = str(DATA_DIR.resolve())
+    status["accounts_path"] = str((DATA_DIR / "accounts.json").resolve())
+    status["profiles_dir"] = str((DATA_DIR / "profiles").resolve())
+    return status

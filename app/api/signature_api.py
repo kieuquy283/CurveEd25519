@@ -34,6 +34,11 @@ auth = AuthService(accounts_path=str(ACCOUNTS_PATH), profiles_dir=str(PROFILES_D
 profiles = ProfileService(profiles_dir=str(PROFILES_DIR))
 
 
+def _log(message: str) -> None:
+    ts = datetime.now(timezone.utc).isoformat()
+    print(f"[signature_api][{ts}] {message}")
+
+
 class SignFileRequest(BaseModel):
     signer: str
     filename: str
@@ -61,18 +66,6 @@ SIGNED_FIELDS = [
 ]
 
 
-def _load_profile_by_username(username: str) -> dict[str, Any]:
-    normalized = username.strip().lower()
-    for path in Path("data/profiles").glob("*.json"):
-        profile = json.loads(path.read_text(encoding="utf-8"))
-        profile_username = ((profile.get("username") or profile.get("name") or "").strip().lower())
-        if profile_username == normalized:
-            if "username" not in profile and profile.get("name"):
-                profile["username"] = profile["name"]
-            return profile
-    raise HTTPException(status_code=404, detail=f"Profile not found: {username}")
-
-
 def _resolve_account(identifier: str) -> dict[str, Any]:
     needle = identifier.strip().lower()
     accounts = auth._load_accounts()
@@ -84,7 +77,10 @@ def _resolve_account(identifier: str) -> dict[str, Any]:
                 account["user_id"] = user_id
                 auth._save_accounts(accounts)
             return account
-    raise HTTPException(status_code=404, detail=f"Signer account not found: {identifier}")
+    raise HTTPException(
+        status_code=404,
+        detail="Account not found. Please register and verify this email first.",
+    )
 
 
 def _ensure_profile_for_account(account: dict[str, Any]) -> dict[str, Any]:
@@ -118,6 +114,7 @@ def _ensure_profile_for_account(account: dict[str, Any]) -> dict[str, Any]:
         display_name=str(account.get("display_name") or email),
         save=True,
     )
+    _log(f"profile auto-created for account email={email}")
     account["profile_id"] = profile.get("profile_id")
     accounts = auth._load_accounts()
     for row in accounts:
@@ -157,6 +154,7 @@ def _validate_container_fields(container: dict[str, Any]) -> None:
 @router.post("/sign-file")
 def sign_file(req: SignFileRequest):
     signer = req.signer.strip().lower()
+    _log(f"sign-file lookup signer={signer}")
     if not signer:
         raise HTTPException(status_code=400, detail="Signer is required.")
     file_bytes = _decode_b64(req.content_b64)
@@ -181,10 +179,28 @@ def sign_file(req: SignFileRequest):
         "signed_at": signed_at,
     }
 
+    payload = _canonical_payload_bytes(signed_file)
+    signature = CryptoService.sign_bytes(private_key_b64=signer_private_key, data=payload)
+    signed_file["signature"] = base64.b64encode(signature).decode("utf-8")
+
+    return {
+        "ok": True,
+        "signed_file": signed_file,
+        "debug": {
+            "algorithm": "Ed25519",
+            "hash": "SHA-256",
+            "payload_size": len(payload),
+            "signature_size": len(signature),
+            "signer": signed_file["signer"],
+            "payload_sha256": hashlib.sha256(payload).hexdigest(),
+        },
+    }
+
 
 @router.get("/profile-status")
 def profile_status(user: str):
     user_norm = user.strip().lower()
+    _log(f"profile-status lookup normalized_email={user_norm}")
     try:
         account = _resolve_account(user_norm)
         account_exists = True
@@ -208,24 +224,8 @@ def profile_status(user: str):
         "profile_exists": profile is not None,
         "has_ed25519_private_key": bool(ed.get("private_key")),
         "has_ed25519_public_key": bool(ed.get("public_key")),
+        "has_x25519_private_key": bool(x.get("private_key")),
         "has_x25519_public_key": bool(x.get("public_key")),
-    }
-
-    payload = _canonical_payload_bytes(signed_file)
-    signature = CryptoService.sign_bytes(private_key_b64=signer_private_key, data=payload)
-    signed_file["signature"] = base64.b64encode(signature).decode("utf-8")
-
-    return {
-        "ok": True,
-        "signed_file": signed_file,
-        "debug": {
-            "algorithm": "Ed25519",
-            "hash": "SHA-256",
-            "payload_size": len(payload),
-            "signature_size": len(signature),
-            "signer": signed_file["signer"],
-            "payload_sha256": hashlib.sha256(payload).hexdigest(),
-        },
     }
 
 
