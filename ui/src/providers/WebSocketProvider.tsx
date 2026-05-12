@@ -1,5 +1,5 @@
-/**
- * WebSocket provider — manages connection lifecycle and packet routing.
+﻿/**
+ * WebSocket provider â€” manages connection lifecycle and packet routing.
  * Wires transport packets to Zustand stores.
  */
 
@@ -23,7 +23,7 @@ import {
 } from "@/types/packets";
 
 import { ChatMessage } from "@/types/models";
-import { saveConversationMessage } from "@/services/chatHistory";
+import { saveConversationMessage } from "@/services/conversations";
 
 interface ParsedAttachment {
   id: string;
@@ -114,7 +114,7 @@ function parseIncomingEnvelope(rawText: string) {
         typeof parsed.text === "string" &&
         parsed.text.trim()
           ? parsed.text
-          : `📎 ${fileName}`;
+          : `ðŸ“Ž ${fileName}`;
 
       attachments = [
         {
@@ -143,7 +143,7 @@ function parseIncomingEnvelope(rawText: string) {
       };
     }
   } catch {
-    // text thường, giữ nguyên rawText
+    // text thÆ°á»ng, giá»¯ nguyÃªn rawText
   }
 
   return {
@@ -480,3 +480,4 @@ export function WebSocketProvider({
 
   return <>{children}</>;
 }
+

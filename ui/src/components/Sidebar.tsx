@@ -4,7 +4,7 @@
 
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Conversation } from "@/types/models";
 import {
   FileSignature,
@@ -27,7 +27,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { websocketService } from "@/services/websocket";
 import { listTrustedContacts, requestConnection, verifyConnection } from "@/services/connections";
 import { useContactStore } from "@/store/useContactStore";
-import { listConversations, listConversationMessages } from "@/services/chatHistory";
+import { listConversations, listConversationMessages } from "@/services/conversations";
 import { listNotifications, markNotificationRead } from "@/services/notifications";
 import { useNotificationStore } from "@/store/useNotificationStore";
 
@@ -55,6 +55,8 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
   const [verifyCode, setVerifyCode] = useState("");
   const [connectionMsg, setConnectionMsg] = useState("");
   const [devCode, setDevCode] = useState("");
+  const loadedConversationsForUserRef = useRef<string | null>(null);
+  const loadedMessagesForKeyRef = useRef<string | null>(null);
 
   const conversationMap = useChatStore((s) => s.conversations);
   const addConversation = useChatStore((s) => s.addConversation);
@@ -117,6 +119,8 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
   useEffect(() => {
     const userId = currentUser?.id || currentUser?.email;
     if (!userId) return;
+    if (loadedConversationsForUserRef.current === userId) return;
+    loadedConversationsForUserRef.current = userId;
     listConversations(userId)
       .then((result) => {
         for (const row of result.conversations) {
@@ -136,12 +140,18 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
           });
         }
       })
-      .catch(() => {});
+      .catch((error) => {
+        console.warn("[Sidebar] Failed to fetch conversations:", error);
+        loadedConversationsForUserRef.current = null;
+      });
   }, [currentUser?.id, currentUser?.email, addConversation]);
 
   useEffect(() => {
     const userId = currentUser?.id || currentUser?.email;
     if (!userId || !activeConversationId) return;
+    const key = `${userId}::${activeConversationId}`;
+    if (loadedMessagesForKeyRef.current === key) return;
+    loadedMessagesForKeyRef.current = key;
     listConversationMessages(activeConversationId, userId, 100)
       .then((result) => {
         const mapped = result.messages.map((m) => ({
@@ -163,7 +173,10 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
         }));
         addMessages(mapped);
       })
-      .catch(() => {});
+      .catch((error) => {
+        console.warn("[Sidebar] Failed to fetch messages:", error);
+        loadedMessagesForKeyRef.current = null;
+      });
   }, [activeConversationId, currentUser?.id, currentUser?.email, addMessages]);
 
   useEffect(() => {
@@ -515,4 +528,5 @@ function ConnectionPill({
     </div>
   );
 }
+
 

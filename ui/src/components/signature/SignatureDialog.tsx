@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import React, { ChangeEvent, useMemo, useState } from "react";
+import React, { ChangeEvent, useMemo, useRef, useState } from "react";
 import { Download, Loader2, X } from "lucide-react";
 
 import { signFile } from "@/services/signature";
@@ -62,12 +62,14 @@ export default function SignatureDialog({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSigning, setIsSigning] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [latestSignedContainer, setLatestSignedContainer] =
     useState<SignedFileContainer | null>(null);
 
   const signedFiles = useSignatureStore((s) => s.signedFiles);
   const addSignedFile = useSignatureStore((s) => s.addSignedFile);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fileInfo = useMemo(() => {
     if (!selectedFile) return null;
@@ -85,11 +87,12 @@ export default function SignatureDialog({
     event.target.value = "";
     setSelectedFile(file);
     setError("");
+    setSuccess("");
   };
 
   const handleSignFile = async () => {
     if (!selectedFile || isSigning) return;
-    const signer = currentUser?.email || currentUser?.id || "";
+    const signer = (currentUser?.email || currentUser?.id || "").trim().toLowerCase();
     if (!signer) {
       setError("Vui lòng đăng nhập trước khi ký file.");
       return;
@@ -97,11 +100,8 @@ export default function SignatureDialog({
     try {
       setIsSigning(true);
       setError("");
+      setSuccess("");
       const content_b64 = await fileToBase64(selectedFile);
-      console.info("[SignatureDialog] Signing file", {
-        endpoint: "/api/signature/sign-file",
-        signer,
-      });
       const result = await signFile({
         signer,
         filename: selectedFile.name,
@@ -125,6 +125,7 @@ export default function SignatureDialog({
       });
 
       setLatestSignedContainer(result.signed_file);
+      setSuccess("Ký file thành công.");
     } catch (signError) {
       console.error("[SignatureDialog] Sign failed:", signError);
       const message =
@@ -135,6 +136,15 @@ export default function SignatureDialog({
       setError(detail || "Không thể ký file. Vui lòng kiểm tra backend hoặc profile ký.");
     } finally {
       setIsSigning(false);
+    }
+  };
+
+  const handleClearSelectedFile = () => {
+    setSelectedFile(null);
+    setError("");
+    setSuccess("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -169,7 +179,7 @@ export default function SignatureDialog({
             <div className="flex flex-wrap items-center gap-2">
               <label className="inline-flex cursor-pointer items-center rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:border-blue-500">
                 Chọn file
-                <input type="file" className="hidden" onChange={handleSelectFile} />
+                <input ref={fileInputRef} type="file" className="hidden" onChange={handleSelectFile} />
               </label>
               <button
                 type="button"
@@ -179,6 +189,14 @@ export default function SignatureDialog({
               >
                 {isSigning ? <Loader2 size={14} className="animate-spin" /> : null}
                 Ký file
+              </button>
+              <button
+                type="button"
+                disabled={!selectedFile || isSigning}
+                onClick={handleClearSelectedFile}
+                className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 hover:border-zinc-500 disabled:opacity-50"
+              >
+                Hủy chọn file
               </button>
               <button
                 type="button"
@@ -202,6 +220,11 @@ export default function SignatureDialog({
             {error && (
               <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
                 {error}
+              </div>
+            )}
+            {success && (
+              <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                {success}
               </div>
             )}
           </div>

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -311,21 +312,23 @@ class StorageRepository:
     def get_or_create_conversation(self, user_a: str, user_b: str, connection_id: str | None = None) -> dict[str, Any]:
         a = self._norm_email(user_a)
         b = self._norm_email(user_b)
-        pair = {a, b}
+        pair = sorted([a, b])
+        conv_id = hashlib.sha256(f"{pair[0]}::{pair[1]}".encode("utf-8")).hexdigest()[:24]
         if self.is_supabase():
             rows = list(
-                self._supabase.table("app_conversations").select("*").or_(
-                    f"and(user_a_email.eq.{a},user_b_email.eq.{b}),and(user_a_email.eq.{b},user_b_email.eq.{a})"
-                ).limit(1).execute().data or []
+                self._supabase.table("app_conversations").select("*").eq("id", conv_id).limit(1).execute().data or []
             )
             if rows:
-                return dict(rows[0])
-            import secrets
+                existing = dict(rows[0])
+                if connection_id and not existing.get("connection_id"):
+                    self._supabase.table("app_conversations").update({"connection_id": connection_id}).eq("id", conv_id).execute()
+                    existing["connection_id"] = connection_id
+                return existing
             now = self._now_iso()
             conv = {
-                "id": secrets.token_hex(12),
-                "user_a_email": a,
-                "user_b_email": b,
+                "id": conv_id,
+                "user_a_email": pair[0],
+                "user_b_email": pair[1],
                 "connection_id": connection_id,
                 "created_at": now,
                 "updated_at": now,
@@ -336,14 +339,13 @@ class StorageRepository:
             return conv
         rows = self._read_rows(self.conversations_path)
         for row in rows:
-            if {self._norm_email(str(row.get("user_a_email") or "")), self._norm_email(str(row.get("user_b_email") or ""))} == pair:
+            if row.get("id") == conv_id:
                 return row
-        import secrets
         now = self._now_iso()
         conv = {
-            "id": secrets.token_hex(12),
-            "user_a_email": a,
-            "user_b_email": b,
+            "id": conv_id,
+            "user_a_email": pair[0],
+            "user_b_email": pair[1],
             "connection_id": connection_id,
             "created_at": now,
             "updated_at": now,

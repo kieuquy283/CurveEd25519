@@ -1803,3 +1803,62 @@ Recommended columns/indexes are aligned with:
 ### Checks run
 - `python -m compileall app server.py` (pass)
 - `cd ui && npm run build` (pass; existing unrelated warnings remain)
+
+## 2026-05-12 - Persistence Reload + Signature Dialog File Selection Fix
+
+### Fixed conversation/message persistence after reload
+- Backend conversation identity is now deterministic per normalized user pair.
+- `get_or_create_conversation` now generates stable `conversation_id` from sorted normalized emails, then upserts by that id.
+- This avoids fragile pair-query behavior and prevents conversation mismatch/disappearance after refresh.
+
+### Frontend persistence hydration stability
+- Added guarded hydration in sidebar:
+  - fetch conversations once per logged-in user
+  - fetch messages once per active conversation per user
+- Added safe warning logs on failures without crashing UI:
+  - fetch conversations failed
+  - fetch messages failed
+- Continued dedupe via existing chat store id/packetId checks.
+
+### Added/updated conversation service
+- Added `ui/src/services/conversations.ts` and switched chat persistence usage to it from UI components/providers.
+
+### Fixed signature dialog file selection + sign flow UX
+- Reworked signature dialog file selection behavior:
+  - selected file preview appears immediately (filename, mime type, size)
+  - supports selecting same file again (`input.value` reset)
+  - added `Hủy chọn file` action
+  - added signing success message
+  - keeps error display for failed signing
+- Signer identity is now normalized before sign request:
+  - `signer = currentUser.email/id -> trim().toLowerCase()`
+- If no logged-in user, dialog shows:
+  - `Vui lòng đăng nhập trước khi ký file.`
+
+### Files changed
+- `app/services/storage_repository.py`
+- `ui/src/components/Sidebar.tsx`
+- `ui/src/components/signature/SignatureDialog.tsx`
+- `ui/src/components/MessageComposer.tsx` (import path)
+- `ui/src/providers/WebSocketProvider.tsx` (import path)
+- `ui/src/services/conversations.ts` (new)
+
+### Supabase tables required
+- `app_conversations`
+- `app_messages`
+- `app_notifications`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+- `cd ui && npm run build` (pass; existing unrelated warnings remain)
+
+### Manual test
+1. Login user A and user B.
+2. Send encrypted text/file between users.
+3. Reload both browsers.
+4. Verify conversations remain in sidebar.
+5. Open a conversation and confirm previous messages load.
+6. Open signature dialog, choose a file, confirm preview appears.
+7. Click `Ký file`, confirm success and signed file list entry.
+8. Download signed file and send through chat.
+9. Receiver can still open envelope trace and signed-file section behavior remains intact.
