@@ -1474,3 +1474,58 @@ The same `EmailService` is used by and now supports Resend for:
 7. Check `GET /api/signature/profile-status?user=<email>` => all key booleans true.
 8. Restart/redeploy Render and re-check persistence.
 9. Sign file + verify file.
+
+## 2026-05-12 - Brevo Email Provider Diagnostics and Send Fix
+
+### Fixed
+- Extended unified email service to support `EMAIL_PROVIDER=brevo` via REST API (no SMTP path for brevo provider).
+- Added Brevo env reads:
+  - `BREVO_API_KEY`
+  - `EMAIL_FROM`
+  - `EMAIL_FROM_NAME`
+- Added explicit Brevo missing-key failure:
+  - `BrevoConfigurationError: BREVO_API_KEY is missing`
+
+### Brevo API send implementation
+- Endpoint:
+  - `POST https://api.brevo.com/v3/smtp/email`
+- Headers:
+  - `api-key`
+  - `Content-Type: application/json`
+  - `Accept: application/json`
+  - `User-Agent: CurveEd25519/1.0`
+- Body includes:
+  - `sender.name` (`EMAIL_FROM_NAME` fallback `CurveEd25519`)
+  - `sender.email` (`EMAIL_FROM`)
+  - `to[]`
+  - `subject`
+  - `textContent`
+  - `htmlContent`
+
+### Diagnostics updated
+- `/api/auth/email-config` now includes:
+  - `provider`
+  - `email_from`
+  - `email_from_name`
+  - `has_brevo_api_key`
+  - `has_resend_api_key`
+  - `smtp_host`
+  - `smtp_port`
+  - `has_username`
+  - `has_password`
+  - `use_tls`
+  - `app_env`
+
+### Test-email behavior
+- `/api/auth/test-email` continues using the same unified `send_code_email` function as register/resend/forgot-password.
+
+### Error handling
+- Non-2xx Brevo responses capture and return safe status/body via existing `error` flow.
+- API keys are never exposed in responses/logs.
+
+### Files changed
+- `app/services/email_service.py`
+- `app/services/auth_service.py`
+
+### Checks run
+- `python -m compileall app server.py` (pass)

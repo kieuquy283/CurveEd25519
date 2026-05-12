@@ -18,7 +18,9 @@ class EmailService:
     def __init__(self) -> None:
         self.provider = (os.getenv("EMAIL_PROVIDER") or "smtp").strip().lower()
         self.resend_api_key = (os.getenv("RESEND_API_KEY") or "").strip()
+        self.brevo_api_key = (os.getenv("BREVO_API_KEY") or "").strip()
         self.email_from = (os.getenv("EMAIL_FROM") or "").strip()
+        self.email_from_name = (os.getenv("EMAIL_FROM_NAME") or "").strip()
 
         self.host = (os.getenv("SMTP_HOST") or "").strip()
         raw_port = (os.getenv("SMTP_PORT") or "0").strip()
@@ -46,6 +48,8 @@ class EmailService:
         self.last_error_class: str | None = None
 
     def is_configured(self) -> bool:
+        if self.provider == "brevo":
+            return bool(self.brevo_api_key and self.email_from)
         if self.provider == "resend":
             return bool(self.resend_api_key and self.email_from)
         return bool(
@@ -60,6 +64,8 @@ class EmailService:
         return {
             "provider": self.provider,
             "email_from": self.email_from or self.sender or "",
+            "email_from_name": self.email_from_name or "CurveEd25519",
+            "has_brevo_api_key": bool(self.brevo_api_key),
             "has_resend_api_key": bool(self.resend_api_key),
             "smtp_host": self.host or "",
             "smtp_port": self.port,
@@ -78,13 +84,18 @@ class EmailService:
         _log(
             "send_code_email requested "
             f"provider={status['provider']} email_from={status['email_from']} "
+            f"email_from_name={status['email_from_name']} has_brevo_api_key={status['has_brevo_api_key']} "
             f"has_resend_api_key={status['has_resend_api_key']} "
             f"host={status['smtp_host']} port={status['smtp_port']} from={status['smtp_from']} "
             f"has_username={status['has_username']} has_password={status['has_password']} tls={status['smtp_use_tls']}"
         )
 
         if not self.is_configured():
-            if self.provider == "resend":
+            if self.provider == "brevo":
+                self.last_error = "BREVO_API_KEY is missing"
+                self.last_error_class = "BrevoConfigurationError"
+                _log("send_code_email skipped: Brevo is not fully configured")
+            elif self.provider == "resend":
                 self.last_error = "Resend is not fully configured"
                 self.last_error_class = "ResendConfigurationError"
                 _log("send_code_email skipped: Resend is not fully configured")
@@ -106,6 +117,12 @@ class EmailService:
 
         if self.provider == "resend":
             return self._send_via_resend(
+                to_email=to_email,
+                subject=subject,
+                body_text=body_text,
+            )
+        if self.provider == "brevo":
+            return self._send_via_brevo(
                 to_email=to_email,
                 subject=subject,
                 body_text=body_text,
@@ -133,6 +150,74 @@ class EmailService:
                     smtp.send_message(msg)
             _log(f"send_code_email success to={to_email} subject={subject}")
             return True
+        except Exception as exc:
+            self.last_error_class = exc.__class__.__name__
+            self.last_error = str(exc)
+            _log(
+                f"send_code_email failed to={to_email} subject={subject} "
+                f"error_class={self.last_error_class} error={self.last_error}"
+            )
+            return False
+
+    def _send_via_brevo(self, *, to_email: str, subject: str, body_text: str) -> bool:
+        _log(
+            "brevo send attempt "
+            f"provider={self.provider} email_from={self.email_from} recipient={to_email} "
+            f"has_brevo_api_key={bool(self.brevo_api_key)}"
+        )
+        if not self.brevo_api_key:
+            self.last_error_class = "BrevoConfigurationError"
+            self.last_error = "BREVO_API_KEY is missing"
+            return False
+
+        html_body = (
+            "<p>Secure Messenger verification</p>"
+            f"<p><strong>Code:</strong> {body_text.splitlines()[3] if len(body_text.splitlines()) > 3 else ''}</p>"
+            "<p>If you did not request this, ignore this email.</p>"
+        )
+        payload = {
+            "sender": {
+                "name": self.email_from_name or "CurveEd25519",
+                "email": self.email_from,
+            },
+            "to": [{"email": to_email}],
+            "subject": subject,
+            "textContent": body_text,
+            "htmlContent": html_body,
+        }
+        req = urllib.request.Request(
+            url="https://api.brevo.com/v3/smtp/email",
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "api-key": self.brevo_api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "CurveEd25519/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                status_code = int(getattr(resp, "status", 0))
+                if status_code < 200 or status_code >= 300:
+                    body = resp.read().decode("utf-8", errors="replace")
+                    self.last_error_class = "BrevoHTTPError"
+                    self.last_error = f"HTTP {status_code}: {body or 'Unexpected response'}"
+                    _log(f"brevo response status={status_code} recipient={to_email} body={body or '<empty>'}")
+                    return False
+                _log(f"brevo response status={status_code} recipient={to_email}")
+            _log(f"send_code_email success to={to_email} subject={subject}")
+            return True
+        except urllib.error.HTTPError as exc:
+            error_body = ""
+            try:
+                error_body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                error_body = ""
+            self.last_error_class = "BrevoHTTPError"
+            self.last_error = f"HTTP {exc.code}: {exc.reason} - {error_body or '<empty>'}"
+            _log(f"brevo response status={exc.code} recipient={to_email} body={error_body or '<empty>'}")
+            return False
         except Exception as exc:
             self.last_error_class = exc.__class__.__name__
             self.last_error = str(exc)

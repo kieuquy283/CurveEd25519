@@ -281,6 +281,7 @@ class AuthService:
         _log(
             "email-config requested "
             f"provider={status['provider']} email_from={status['email_from']} "
+            f"email_from_name={status['email_from_name']} has_brevo_api_key={status['has_brevo_api_key']} "
             f"has_resend_api_key={status['has_resend_api_key']} "
             f"host={status['smtp_host']} port={status['smtp_port']} from={status['smtp_from']} "
             f"has_username={status['has_username']} has_password={status['has_password']} "
@@ -290,6 +291,8 @@ class AuthService:
             "ok": True,
             "app_env": status["app_env"],
             "provider": status["provider"],
+            "email_from_name": status["email_from_name"],
+            "has_brevo_api_key": status["has_brevo_api_key"],
             "has_resend_api_key": status["has_resend_api_key"],
             "email_from": status["email_from"],
             "smtp_host": status["smtp_host"],
