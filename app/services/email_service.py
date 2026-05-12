@@ -14,7 +14,11 @@ def _log(message: str) -> None:
 class EmailService:
     def __init__(self) -> None:
         self.host = (os.getenv("SMTP_HOST") or "").strip()
-        self.port = int((os.getenv("SMTP_PORT") or "0").strip() or 0)
+        raw_port = (os.getenv("SMTP_PORT") or "0").strip()
+        try:
+            self.port = int(raw_port or 0)
+        except ValueError:
+            self.port = 0
         self.username = (os.getenv("SMTP_USERNAME") or "").strip()
         self.password = (os.getenv("SMTP_PASSWORD") or "").strip()
         self.sender = (os.getenv("SMTP_FROM") or "").strip()
@@ -90,13 +94,16 @@ class EmailService:
 
         try:
             if self.port == 465:
-                with smtplib.SMTP_SSL(self.host, self.port, timeout=15) as smtp:
+                with smtplib.SMTP_SSL(self.host, self.port, timeout=20) as smtp:
+                    smtp.ehlo()
                     smtp.login(self.username, self.password)
                     smtp.send_message(msg)
             else:
-                with smtplib.SMTP(self.host, self.port, timeout=15) as smtp:
+                with smtplib.SMTP(self.host, self.port, timeout=20) as smtp:
+                    smtp.ehlo()
                     if self.use_tls:
                         smtp.starttls()
+                        smtp.ehlo()
                     smtp.login(self.username, self.password)
                     smtp.send_message(msg)
             _log(f"send_code_email success to={to_email} subject={subject}")
@@ -104,5 +111,8 @@ class EmailService:
         except Exception as exc:
             self.last_error_class = exc.__class__.__name__
             self.last_error = str(exc)
-            _log(f"send_code_email failed to={to_email} subject={subject}: {exc}")
+            _log(
+                f"send_code_email failed to={to_email} subject={subject} "
+                f"error_class={self.last_error_class} error={self.last_error}"
+            )
             return False

@@ -1118,3 +1118,43 @@ Updated UI behavior:
 5. Register new account and confirm verification email arrives.
 6. Verify code and login.
 7. Test resend verification and forgot-password request.
+
+## 2026-05-12 - Missing Auth Email Diagnostic Endpoints (Render 404) Fix
+
+### What was verified and fixed
+- Confirmed auth router is included by `server.py` and mounted under `/api/auth`.
+- Confirmed and hardened endpoint handlers in the active auth router:
+  - `GET /api/auth/email-config`
+  - `POST /api/auth/test-email`
+- Added explicit endpoint-hit logs in auth API handlers for easier Render log tracing.
+- Standardized `/api/auth/test-email` response:
+  - success: `{ ok: true, sent: true, message: "Test email sent" }`
+  - failure: `{ ok: false, sent: false, error: "<safe error>" }`
+
+### SMTP send-path hardening
+- Updated email service SMTP transport details:
+  - parses `SMTP_PORT` safely to integer
+  - uses timeout `20s`
+  - `ehlo()` before/after `starttls()` for TLS path
+  - supports SSL path on port `465`
+- Failure logs now include exception class and safe message without exposing secrets.
+
+### Files changed
+- `app/api/auth_api.py`
+- `app/services/auth_service.py`
+- `app/services/email_service.py`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+
+### Deployment note for Render
+- If production still returns 404 at:
+  - `/api/auth/email-config`
+  - `/api/auth/test-email`
+  then Render is running an older commit/image. Redeploy from the commit that contains this section and changed files above.
+
+### Quick production verify steps
+1. Redeploy Render service from latest `main` commit.
+2. Open `/api/auth/email-config` and confirm non-secret SMTP status fields are returned.
+3. Call `/api/auth/test-email` with `{ "to": "your@email" }`.
+4. Check Render logs for endpoint-hit log lines and SMTP send success/failure.

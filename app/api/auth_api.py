@@ -2,11 +2,17 @@
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from datetime import datetime, timezone
 
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 service = AuthService(accounts_path="data/accounts.json", profiles_dir="data/profiles")
+
+
+def _log(message: str) -> None:
+    ts = datetime.now(timezone.utc).isoformat()
+    print(f"[auth_api][{ts}] {message}")
 
 
 class LoginRequest(BaseModel):
@@ -149,14 +155,22 @@ def reset_password(req: ResetPasswordRequest):
 
 @router.get("/email-config")
 def email_config():
+    _log("GET /api/auth/email-config")
     return service.get_email_config_status()
 
 
 @router.post("/test-email")
 def test_email(req: TestEmailRequest):
+    _log("POST /api/auth/test-email")
     sent, error = service.send_test_email(req.to)
+    if sent:
+        return {
+            "ok": True,
+            "sent": True,
+            "message": "Test email sent",
+        }
     return {
-        "ok": sent,
-        "sent": sent,
-        "error": error,
+        "ok": False,
+        "sent": False,
+        "error": error or "SMTP send failed",
     }

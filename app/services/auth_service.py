@@ -277,6 +277,12 @@ class AuthService:
 
     def get_email_config_status(self) -> dict[str, object]:
         status = self.email_service.config_status()
+        _log(
+            "email-config requested "
+            f"host={status['smtp_host']} port={status['smtp_port']} from={status['smtp_from']} "
+            f"has_username={status['has_username']} has_password={status['has_password']} "
+            f"use_tls={status['smtp_use_tls']} app_env={status['app_env']}"
+        )
         return {
             "ok": True,
             "app_env": status["app_env"],
@@ -289,6 +295,7 @@ class AuthService:
         }
 
     def send_test_email(self, to: str) -> tuple[bool, str | None]:
+        _log(f"test-email requested to={to}")
         code = "000000"
         sent = self.email_service.send_code_email(
             to_email=to,
@@ -297,9 +304,11 @@ class AuthService:
             purpose="Email service test",
         )
         if sent:
+            _log(f"test-email success to={to}")
             return True, None
         err = self.email_service.last_error or "SMTP send failed"
         cls = self.email_service.last_error_class or "SMTPError"
+        _log(f"test-email failed to={to} error={cls}: {err}")
         return False, f"{cls}: {err}"
 
     def _profile_for_account(self, account: dict[str, Any]) -> dict[str, Any]:
