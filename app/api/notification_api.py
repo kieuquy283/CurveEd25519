@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 from pathlib import Path
@@ -19,11 +19,21 @@ def _norm(email: str) -> str:
 
 @router.get("")
 def list_notifications(user: str = Query(...)):
-    return {"ok": True, "notifications": storage.list_notifications(_norm(user))}
+    try:
+        rows = storage.list_notifications(_norm(user))
+        return {"ok": True, "notifications": rows}
+    except Exception as exc:
+        return {
+            "ok": True,
+            "notifications": [],
+            "warning": f"list_notifications_failed: {exc.__class__.__name__}",
+        }
 
 
 @router.post("/{notif_id}/read")
 def mark_read(notif_id: str):
-    storage.mark_notification_read(notif_id)
+    try:
+        storage.mark_notification_read(notif_id)
+    except Exception as exc:
+        return {"ok": False, "error": f"mark_notification_read_failed: {exc.__class__.__name__}"}
     return {"ok": True}
-

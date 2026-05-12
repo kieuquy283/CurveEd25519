@@ -61,7 +61,7 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
   const addMessages = useChatStore((s) => s.addMessages);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
-  const notificationHistory = useNotificationStore((s) => s.getRecentNotifications(10));
+  const notificationStateHistory = useNotificationStore((s) => s.history);
   const upsertNotification = useNotificationStore((s) => s.upsertNotification);
   const markAsReadLocal = useNotificationStore((s) => s.markAsRead);
 
@@ -82,6 +82,10 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
 
   const filtered = conversations.filter((c) =>
     (c.peerName ?? c.peerId).toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  const notificationHistory = useMemo(
+    () => [...notificationStateHistory].reverse().slice(0, 10),
+    [notificationStateHistory]
   );
 
   useEffect(() => {

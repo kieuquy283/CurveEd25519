@@ -24,6 +24,10 @@ frontend_origins = [
 ]
 if "http://localhost:3000" not in frontend_origins:
     frontend_origins.append("http://localhost:3000")
+if "http://127.0.0.1:3000" not in frontend_origins:
+    frontend_origins.append("http://127.0.0.1:3000")
+if "https://curve-ed25519.vercel.app" not in frontend_origins:
+    frontend_origins.append("https://curve-ed25519.vercel.app")
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,42 +55,41 @@ def _ws_log(message: str) -> None:
 
 @app.websocket("/ws")
 async def websocket_compat(websocket: WebSocket):
+    _ws_log("incoming websocket request /ws")
     await websocket.accept()
+    _ws_log("websocket accepted /ws")
     client_id: str | None = None
     try:
-        initial_raw = await websocket.receive_text()
-        initial_packet = json.loads(initial_raw)
-        if str(initial_packet.get("packet_type", "")).lower() != "connect":
-            await websocket.close(code=1008, reason="First packet must be connect")
-            return
-
-        client_id = str(initial_packet.get("sender_id") or "").strip().lower()
-        if not client_id:
-            await websocket.close(code=1008, reason="Missing sender_id")
-            return
-
-        ws_clients[client_id] = websocket
-        _ws_log(f"client connected id={client_id}")
-        await websocket.send_text(
-            json.dumps(
-                {
-                    "packet_id": f"hello-{int(datetime.now(timezone.utc).timestamp())}",
-                    "packet_type": "system",
-                    "sender_id": "server",
-                    "receiver_id": client_id,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "requires_ack": False,
-                    "payload": {"status": "ok", "message": "ws connected"},
-                }
-            )
-        )
-
         while True:
             raw = await websocket.receive_text()
-            packet = json.loads(raw)
+            try:
+                packet = json.loads(raw)
+            except Exception:
+                _ws_log("ignored non-json websocket frame")
+                continue
             packet_type = str(packet.get("packet_type") or "").lower()
-            sender_id = str(packet.get("sender_id") or client_id).strip().lower()
+            sender_id = str(packet.get("sender_id") or client_id or "").strip().lower()
             receiver_id = str(packet.get("receiver_id") or "").strip().lower()
+
+            if packet_type == "connect":
+                if sender_id:
+                    client_id = sender_id
+                    ws_clients[client_id] = websocket
+                    _ws_log(f"client connected id={client_id}")
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "packet_id": f"hello-{int(datetime.now(timezone.utc).timestamp())}",
+                                "packet_type": "system",
+                                "sender_id": "server",
+                                "receiver_id": client_id,
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                                "requires_ack": False,
+                                "payload": {"status": "ok", "message": "ws connected"},
+                            }
+                        )
+                    )
+                continue
 
             if packet_type == "ping":
                 await websocket.send_text(
@@ -104,11 +107,15 @@ async def websocket_compat(websocket: WebSocket):
                 )
                 continue
 
+            if not sender_id:
+                _ws_log("ignored packet without sender_id before connect")
+                continue
+
             target = ws_clients.get(receiver_id)
             if target is not None:
                 await target.send_text(json.dumps(packet))
     except WebSocketDisconnect:
-        pass
+        _ws_log(f"websocket disconnected id={client_id or '<unknown>'}")
     except Exception as exc:
         _ws_log(f"connection error id={client_id or '<unknown>'} error={exc}")
     finally:

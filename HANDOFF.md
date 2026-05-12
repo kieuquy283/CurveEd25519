@@ -1704,3 +1704,58 @@ Recommended columns/indexes are aligned with:
 7. Alice sends encrypted text/file/signed-file.
 8. Bob receives and refreshes browser.
 9. Conversations/messages persist after refresh/relogin.
+
+## 2026-05-12 - Production Stability Fix: React Crash, CORS, and WS 1006
+
+### Fixed React client crash risk (#185)
+- Updated sidebar notification selector usage to avoid unstable derived selector snapshots that can trigger repeated renders.
+- `Sidebar` now subscribes to `history` directly and derives recent notifications with `useMemo`.
+
+### Frontend API failure hardening
+- Existing conversation/notification loaders already catch failures in effects.
+- Retained non-throwing behavior in UI fetch effects so API failures no longer crash render flow.
+
+### Backend CORS fix for new persistence APIs
+- Updated `server.py` CORS allow list to explicitly include:
+  - `https://curve-ed25519.vercel.app`
+  - `http://localhost:3000`
+  - `http://127.0.0.1:3000`
+  - plus `FRONTEND_ORIGIN` values and vercel regex.
+
+### Backend new endpoint resilience
+- Hardened new endpoints against backend/Supabase failures:
+  - `GET /api/conversations`
+  - `GET /api/conversations/{id}/messages`
+  - `POST /api/conversations/{id}/messages/save`
+  - `GET /api/notifications`
+  - `POST /api/notifications/{id}/read`
+- On storage failures, endpoints now return safe JSON (`ok` + empty list/warning or clear error) instead of uncaught 500 crashes.
+
+### WebSocket 1006 mitigation
+- Relaxed `/ws` handshake behavior:
+  - no hard close if first frame is not `connect`
+  - ignore malformed/non-JSON frames
+  - register client when a valid `connect` packet arrives
+- Added clearer WS logs for request/accept/disconnect/error.
+- This prevents early protocol-close behavior that commonly surfaces as client-side 1006.
+
+### Files changed
+- `ui/src/components/Sidebar.tsx`
+- `app/api/chat_history_api.py`
+- `app/api/notification_api.py`
+- `server.py`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+- `cd ui && npm run build` (pass; existing unrelated warnings remain)
+
+### Supabase required tables
+- `app_conversations`
+- `app_messages`
+- `app_notifications`
+
+### Manual test focus
+1. Open Vercel app: no React crash screen.
+2. Verify `/api/conversations` and `/api/notifications` calls are no longer blocked by CORS.
+3. If Supabase table missing, API returns safe JSON warning instead of crashing UI.
+4. Confirm `/ws` connects or logs explicit backend reason without immediate silent close loop.
