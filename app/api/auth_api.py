@@ -172,5 +172,5 @@ def test_email(req: TestEmailRequest):
     return {
         "ok": False,
         "sent": False,
-        "error": error or "SMTP send failed",
+        "error": error or "Email send failed",
     }

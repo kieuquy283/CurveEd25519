@@ -279,6 +279,8 @@ class AuthService:
         status = self.email_service.config_status()
         _log(
             "email-config requested "
+            f"provider={status['provider']} email_from={status['email_from']} "
+            f"has_resend_api_key={status['has_resend_api_key']} "
             f"host={status['smtp_host']} port={status['smtp_port']} from={status['smtp_from']} "
             f"has_username={status['has_username']} has_password={status['has_password']} "
             f"use_tls={status['smtp_use_tls']} app_env={status['app_env']}"
@@ -286,6 +288,9 @@ class AuthService:
         return {
             "ok": True,
             "app_env": status["app_env"],
+            "provider": status["provider"],
+            "has_resend_api_key": status["has_resend_api_key"],
+            "email_from": status["email_from"],
             "smtp_host": status["smtp_host"],
             "smtp_port": status["smtp_port"],
             "smtp_from": status["smtp_from"],

@@ -1158,3 +1158,45 @@ Updated UI behavior:
 2. Open `/api/auth/email-config` and confirm non-secret SMTP status fields are returned.
 3. Call `/api/auth/test-email` with `{ "to": "your@email" }`.
 4. Check Render logs for endpoint-hit log lines and SMTP send success/failure.
+
+## 2026-05-12 - Email Provider Switch: Resend HTTP API (Render Free)
+
+### Completed
+- Added `EMAIL_PROVIDER=resend` support in unified backend email service.
+- Added Resend env support:
+  - `RESEND_API_KEY`
+  - `EMAIL_FROM`
+- Implemented HTTPS send via `POST https://api.resend.com/emails` with:
+  - `Authorization: Bearer RESEND_API_KEY`
+  - JSON body `{ from, to, subject, text }`
+- Kept SMTP path as optional fallback when `EMAIL_PROVIDER=smtp`.
+
+### Unified flow coverage
+The same `EmailService` is used by and now supports Resend for:
+- register verification email
+- resend verification email
+- forgot-password reset email
+- connection verification email
+
+### Diagnostics updates
+- `GET /api/auth/email-config` now includes:
+  - `provider`
+  - `has_resend_api_key`
+  - `email_from`
+  - plus existing SMTP diagnostics
+- `POST /api/auth/test-email` now sends through whichever provider is configured (`resend` or `smtp`).
+- No API key/secrets are exposed in responses or logs.
+
+### Files changed
+- `app/services/email_service.py`
+- `app/services/auth_service.py`
+- `app/api/auth_api.py`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+
+### Required env for Render Free (Resend)
+- `EMAIL_PROVIDER=resend`
+- `RESEND_API_KEY=<your resend key>`
+- `EMAIL_FROM=<verified sender/domain on Resend>`
+- `APP_ENV=production`
