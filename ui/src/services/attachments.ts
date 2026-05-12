@@ -3,6 +3,7 @@ import { AttachmentMeta } from "@/types/attachments";
 import { useAttachmentStore } from "@/store/useAttachmentStore";
 import { buildPacketId, buildTimestamp, PacketType, TransportPacket } from "@/types/packets";
 import { websocketService } from "@/services/websocket";
+import { getCurrentUserId } from "@/store/useAuthStore";
 
 const objectUrlMap = new Map<string, string>();
 
@@ -24,7 +25,7 @@ export async function sendAttachmentMeta(a: AttachmentMeta, receiverId: string):
   const packet: TransportPacket = {
     packet_id: a.id,
     packet_type: PacketType.ATTACHMENT_META,
-    sender_id: "frontend",
+    sender_id: getCurrentUserId(),
     receiver_id: receiverId,
     created_at: buildTimestamp(),
     requires_ack: true,

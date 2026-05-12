@@ -26,11 +26,19 @@ export interface ChatMessage {
 
   /** File payload when `type === 'file'` */
   file?: {
-    filename: string;
-    mimeType: string;
-    size: number;
-    content_b64?: string; // optional: present only for local/decrypted messages
+    id?: string;
+    filename?: string;
+    fileName?: string;
+    mimeType?: string;
+    mime_type?: string;
+    size?: number;
+    content_b64?: string;
+    dataBase64?: string;
+    url?: string;
+    crypto?: AttachmentCryptoInfo;
   };
+
+  attachments?: Attachment[];
 
   /** Raw envelope when message was received/sent (encrypted envelope JSON) */
   envelope?: any;
@@ -101,6 +109,7 @@ export type TrustLevel =
 
 export interface Contact {
   id: string;
+  connectionId?: string;
 
   name: string;
 
@@ -113,6 +122,10 @@ export interface Contact {
   ed25519PublicKey?: string;
 
   fingerprint?: string;
+  ed25519Fingerprint?: string;
+  trusted?: boolean;
+  keyChanged?: boolean;
+  verifiedAt?: string;
 
   trustLevel: TrustLevel;
 
@@ -242,6 +255,18 @@ export interface Attachment {
 
   uploadProgress?: number;
   metadata?: Record<string, any>;
+  crypto?: AttachmentCryptoInfo;
+  envelope?: Record<string, unknown>;
+  debug?: Record<string, unknown> | null;
+}
+
+export interface AttachmentCryptoInfo {
+  encrypted?: boolean;
+  decrypted?: boolean;
+  encryption?: string;
+  keyExchange?: string;
+  kdf?: string;
+  signature?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -272,4 +297,45 @@ export interface UiPreferences {
   wsEndpoint: string;
 
   localPeerId: string;
+}
+
+export interface SignedFileContainer {
+  version: number;
+  type: "signed-file";
+  filename: string;
+  mimeType: string;
+  size: number;
+  content_b64: string;
+  signer: string;
+  signer_public_key: string;
+  algorithm: "Ed25519";
+  hash: "SHA-256";
+  signed_at: string;
+  signature: string;
+}
+
+export interface SignatureDebug {
+  algorithm: "Ed25519";
+  hash: "SHA-256";
+  payload_size?: number;
+  signature_size?: number;
+  signer: string;
+  payload_sha256?: string;
+}
+
+export interface VerificationResult {
+  ok: boolean;
+  valid: boolean;
+  message: string;
+  file?: {
+    filename: string;
+    mime_type: string;
+    content_b64: string;
+    size: number;
+  };
+  debug: {
+    algorithm: string;
+    hash: string;
+    signer: string;
+  };
 }

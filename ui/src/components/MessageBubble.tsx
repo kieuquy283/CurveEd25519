@@ -9,15 +9,14 @@ import { ChatMessage } from "@/types/models";
 import { CheckCheck, Check, AlertCircle, Clock } from "lucide-react";
 import AttachmentBubble from "@/components/attachments/AttachmentBubble";
 import CryptoTracePanel from "@/components/crypto/CryptoTracePanel";
+import { getConversationApiBaseUrl } from "@/services/conversationCrypto";
+import { useAuthStore } from "@/store/useAuthStore";
 
 interface MessageBubbleProps {
   message: ChatMessage;
   isFirstInGroup: boolean;
   isLastInGroup: boolean;
 }
-
-const CURRENT_USER_ID = "frontend";
-const API_BASE_URL = "http://127.0.0.1:8000";
 
 function getMessageEnvelope(message: ChatMessage): any {
   return (
@@ -42,7 +41,11 @@ function MessageBubbleInner({
   isFirstInGroup,
   isLastInGroup,
 }: MessageBubbleProps) {
-  const isOutgoing = message.from === CURRENT_USER_ID;
+  const currentUserId =
+    useAuthStore((state) => state.currentUser?.id) ||
+    process.env.NEXT_PUBLIC_USER_ID ||
+    "frontend";
+  const isOutgoing = message.from === currentUserId;
   const timestamp = new Date(message.timestamp);
   const timeString = timestamp.toLocaleTimeString("en-US", {
     hour: "2-digit",
@@ -58,6 +61,15 @@ function MessageBubbleInner({
     isOutgoing ? "encrypt" : "decrypt"
   );
   const [traceLoading, setTraceLoading] = useState(false);
+  const availableEnvelope = getMessageEnvelope(message);
+  const availableDebug = getMessageDebug(message);
+  const canOpenTrace = Boolean(availableEnvelope || availableDebug);
+  const traceHint =
+    !canOpenTrace && message.status === "pending"
+      ? "Đang mã hóa..."
+      : !canOpenTrace && message.status === "failed"
+        ? "Mã hóa/gửi thất bại"
+        : undefined;
 
   let statusIcon: React.ReactElement | null = null;
 
@@ -85,8 +97,7 @@ function MessageBubbleInner({
     const envelope = getMessageEnvelope(message);
     const existingDebug = getMessageDebug(message);
 
-    if (!envelope) {
-      console.warn("No encrypted envelope available for this message.");
+    if (!envelope && !existingDebug) {
       return;
     }
 
@@ -108,13 +119,13 @@ function MessageBubbleInner({
     try {
       setTraceLoading(true);
 
-      const response = await fetch(`${API_BASE_URL}/api/conversation/decrypt`, {
+      const response = await fetch(`${getConversationApiBaseUrl()}/api/conversation/decrypt`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          receiver: CURRENT_USER_ID,
+          receiver: currentUserId,
           sender: message.from,
           envelope,
         }),
@@ -158,19 +169,31 @@ function MessageBubbleInner({
             <button
               type="button"
               onClick={handleOpenTrace}
+              disabled={!canOpenTrace}
+              title={traceHint}
               className={`text-left px-4 py-2 rounded-lg rounded-t-2xl break-words ${
                 isOutgoing
                   ? "bg-blue-600 text-white rounded-br-none"
                   : "bg-zinc-800 text-zinc-100 rounded-bl-none"
-              }`}
+              } ${!canOpenTrace ? "cursor-default" : ""}`}
             >
               <p className="text-sm leading-snug">{message.text}</p>
             </button>
           )}
 
-          <div onClick={handleOpenTrace} className="cursor-pointer">
+          <div
+            onClick={canOpenTrace ? handleOpenTrace : undefined}
+            className={canOpenTrace ? "cursor-pointer" : ""}
+            title={traceHint}
+          >
             <AttachmentBubble message={message} />
           </div>
+
+          {traceHint && (
+            <div className="px-2 text-xs text-zinc-400">
+              {traceHint}
+            </div>
+          )}
 
           {isLastInGroup && (
             <div

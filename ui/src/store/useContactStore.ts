@@ -15,6 +15,8 @@ interface ContactStore {
   getContact: (id: string) => Contact | undefined;
   getContacts: () => Contact[];
   searchContacts: (query: string) => Contact[];
+  replaceContacts: (contacts: Contact[]) => void;
+  isTrustedContact: (peerId: string) => boolean;
   reset: () => void;
 }
 
@@ -67,6 +69,23 @@ export const useContactStore = create<ContactStore>()(
             c.name.toLowerCase().includes(q) ||
             c.peerId.toLowerCase().includes(q)
         );
+      },
+
+      replaceContacts: (contacts) =>
+        set(() => {
+          const map = new Map<string, Contact>();
+          for (const contact of contacts) {
+            map.set(contact.id, contact);
+          }
+          return { contacts: map };
+        }),
+
+      isTrustedContact: (peerId) => {
+        const state = get();
+        const contact = Array.from(state.contacts.values()).find(
+          (c) => c.peerId.toLowerCase() === peerId.toLowerCase()
+        );
+        return Boolean(contact?.trusted && !contact?.keyChanged);
       },
       
       reset: () => set({ contacts: new Map() }),

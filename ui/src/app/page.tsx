@@ -1,14 +1,21 @@
-/**
- * Root page — renders the full ChatLayout.
- * Demo conversations are seeded for UI testing until real peers connect.
- */
+﻿"use client";
 
-"use client";
-
+import React from "react";
 import { ChatLayout } from "@/components/ChatLayout";
-// import { useDemoConversations } from "@/hooks/useDemoConversations";
+import { useAuthStore } from "@/store/useAuthStore";
+import { WebSocketProvider } from "@/providers/WebSocketProvider";
+import AuthScreen from "@/components/auth/AuthScreen";
 
 export default function Home() {
-  // useDemoConversations();
-  return <ChatLayout />;
+  const { currentUser, isAuthenticated } = useAuthStore();
+
+  if (!isAuthenticated || !currentUser) {
+    return <AuthScreen />;
+  }
+
+  return (
+    <WebSocketProvider>
+      <ChatLayout />
+    </WebSocketProvider>
+  );
 }

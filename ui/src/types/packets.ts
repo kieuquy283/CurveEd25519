@@ -138,6 +138,8 @@ export interface MessageEnvelope {
 
 export interface MessagePayload {
   envelope: MessageEnvelope;
+  plaintext?: string;
+  debug?: Record<string, unknown>;
 }
 
 export interface AckPayload {

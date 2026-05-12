@@ -1,5 +1,5 @@
-/**
- * WebSocket service — singleton transport layer.
+﻿/**
+ * WebSocket service â€” singleton transport layer.
  */
 
 import {
@@ -12,8 +12,8 @@ import {
 } from "@/types/packets";
 
 import { useWebSocketStore } from "@/store/useWebSocketStore";
-import { useChatStore } from "@/store/useChatStore";
 import { decryptIncomingMessage } from "@/services/conversationCrypto";
+import { getWsUrl } from "@/config/env";
 
 type PacketHandler = (packet: TransportPacket) => Promise<void> | void;
 type ConnectionHandler = () => Promise<void> | void;
@@ -28,9 +28,25 @@ interface WebSocketServiceConfig {
   connectTimeoutMs: number;
 }
 
+function resolveDefaultWsUrl(): string {
+  const envUrl = getWsUrl();
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim();
+  }
+
+  if (typeof window !== "undefined") {
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    return `${scheme}://${window.location.hostname}:8765`;
+  }
+
+  return "ws://127.0.0.1:8765";
+}
+
 const DEFAULT_CONFIG: WebSocketServiceConfig = {
-  url: "ws://localhost:8765",
-  localPeerId: "frontend",
+  url: resolveDefaultWsUrl(),
+  localPeerId:
+    process.env.NEXT_PUBLIC_USER_ID ||
+    "frontend",
   heartbeatIntervalMs: 15_000,
   reconnectBaseDelayMs: 500,
   reconnectMaxDelayMs: 30_000,
@@ -142,13 +158,12 @@ class WebSocketService {
 
         this.socket.onerror = (event: Event) => {
           this.clearConnectTimer();
+          const errorMessage = `WebSocket connection failed: ${this.config.url}. Ensure WS server is running.`;
 
-          console.error("[WS] error:", event);
-
-          store.setError("WebSocket error");
+          store.setError(errorMessage);
           store.setConnecting(false);
 
-          reject(new Error("WebSocket error"));
+          reject(new Error(errorMessage));
         };
       } catch (error) {
         store.setConnecting(false);
@@ -292,45 +307,17 @@ class WebSocketService {
         return;
       }
 
-      const plaintext = await decryptIncomingMessage({
+      const decrypted = await decryptIncomingMessage({
         receiver: this.config.localPeerId,
         sender: packet.sender_id || "unknown",
         envelope: packet.payload.envelope,
       });
 
-      const chatStore = useChatStore.getState();
-      const conversationId = packet.sender_id || "unknown";
-      const existingConversation =
-        chatStore.conversations.get(conversationId);
-
-      if (!existingConversation) {
-        chatStore.addConversation({
-          id: conversationId,
-          peerId: packet.sender_id,
-          peerName: packet.sender_id,
-          createdAt: packet.created_at || new Date().toISOString(),
-          lastMessageAt: packet.created_at || new Date().toISOString(),
-          unreadCount: 1,
-          isOnline: true,
-          isMuted: false,
-          encrypted: true,
-        });
-      } else {
-        chatStore.updateConversation(conversationId, {
-          lastMessageAt: packet.created_at,
-          unreadCount: (existingConversation.unreadCount || 0) + 1,
-        });
-      }
-
-      chatStore.addMessage({
-        id: packet.packet_id,
-        conversationId,
-        from: packet.sender_id,
-        to: packet.receiver_id || this.config.localPeerId,
-        text: plaintext,
-        timestamp: packet.created_at || new Date().toISOString(),
-        status: "delivered",
-      });
+      packet.payload = {
+        ...packet.payload,
+        plaintext: decrypted.plaintext,
+        debug: decrypted.debug,
+      };
     } catch (error) {
       console.error("[WS] failed to decrypt incoming message:", error);
     }
@@ -369,8 +356,8 @@ class WebSocketService {
     );
 
     this.reconnectTimer = setTimeout(() => {
-      this.connect().catch((error) => {
-        console.error("[WS] reconnect failed:", error);
+      this.connect().catch(() => {
+        // Error state is already updated in connect/onerror; avoid log spam.
       });
     }, delay);
 
@@ -396,3 +383,4 @@ class WebSocketService {
 }
 
 export const websocketService = new WebSocketService();
+

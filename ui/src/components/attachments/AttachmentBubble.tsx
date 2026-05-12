@@ -6,7 +6,42 @@ import AttachmentPreview from "./AttachmentPreview";
 import UploadProgress from "./UploadProgress";
 
 export default function AttachmentBubble({ message }: { message: ChatMessage }) {
-  const attachments = message.attachmentIds?.map((id) => useAttachmentStore.getState().getAttachment(id)).filter(Boolean) ?? [];
+  const storeAttachments =
+    message.attachmentIds
+      ?.map((id) => useAttachmentStore.getState().getAttachment(id))
+      .filter(Boolean) ?? [];
+  const messageAttachments = message.attachments ?? [];
+  const fileAttachment =
+    message.file && messageAttachments.length === 0
+      ? [
+          {
+            id:
+              message.file.id ??
+              `${message.id}-file`,
+            fileName:
+              message.file.fileName ??
+              message.file.filename ??
+              "attachment",
+            mimeType:
+              message.file.mimeType ??
+              message.file.mime_type ??
+              "application/octet-stream",
+            size: message.file.size ?? 0,
+            url:
+              message.file.url ??
+              (message.file.dataBase64 || message.file.content_b64
+                ? `data:${message.file.mimeType ?? message.file.mime_type ?? "application/octet-stream"};base64,${message.file.dataBase64 ?? message.file.content_b64}`
+                : undefined),
+            uploaded: true,
+            crypto: message.file.crypto,
+          },
+        ]
+      : [];
+  const attachments = [
+    ...messageAttachments,
+    ...fileAttachment,
+    ...storeAttachments,
+  ];
 
   if (attachments.length === 0) return null;
 

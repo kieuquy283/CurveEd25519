@@ -4,9 +4,10 @@
 
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Conversation } from "@/types/models";
 import {
+  FileSignature,
   Plus,
   Settings,
   Shield,
@@ -20,26 +21,37 @@ import { useChatStore } from "@/store/useChatStore";
 import { useWebSocketStore } from "@/store/useWebSocketStore";
 import { ConversationList } from "@/components/ConversationList";
 import StartConversationDialog from "@/components/StartConversationDialog";
+import SignatureDialog from "@/components/signature/SignatureDialog";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/useAuthStore";
+import { websocketService } from "@/services/websocket";
+import { listTrustedContacts, requestConnection, verifyConnection } from "@/services/connections";
+import { useContactStore } from "@/store/useContactStore";
 
 interface SidebarProps {
   onSelectConversation?: () => void;
 }
 
-const DEMO_CONTACTS = [
-  {
-    id: "alice",
-    name: "Alice",
-  },
-  {
-    id: "bob",
-    name: "Bob",
-  },
-];
-
 export function Sidebar({ onSelectConversation }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showDialog, setShowDialog] = useState(false);
+  const [showSignatureDialog, setShowSignatureDialog] =
+    useState(false);
+  const { currentUser, logout } = useAuthStore();
+  const replaceContacts = useContactStore((s) => s.replaceContacts);
+  const contactMap = useContactStore((s) => s.contacts);
+  const trustedContacts = useMemo(
+    () =>
+      Array.from(contactMap.values()).filter(
+        (contact) => contact.trusted
+      ),
+    [contactMap]
+  );
+  const [connectTo, setConnectTo] = useState("");
+  const [connectionId, setConnectionId] = useState("");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [connectionMsg, setConnectionMsg] = useState("");
+  const [devCode, setDevCode] = useState("");
 
   const conversationMap = useChatStore((s) => s.conversations);
   const addConversation = useChatStore((s) => s.addConversation);
@@ -63,6 +75,32 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
   const filtered = conversations.filter((c) =>
     (c.peerName ?? c.peerId).toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  useEffect(() => {
+    const userId = currentUser?.id;
+    if (!userId) return;
+
+    listTrustedContacts(userId)
+      .then((result) => {
+        const contacts = result.contacts.map((item) => ({
+          id: item.user_id || item.email,
+          connectionId: item.connection_id,
+          name: item.display_name || item.email,
+          peerId: item.user_id || item.email,
+          trustLevel: item.trusted ? ("verified" as const) : ("untrusted" as const),
+          trusted: item.trusted,
+          keyChanged: Boolean(item.key_changed),
+          isOnline: false,
+          createdAt: item.verified_at || new Date().toISOString(),
+          verifiedAt: item.verified_at,
+          fingerprint: item.key_fingerprint,
+          ed25519PublicKey: item.ed25519_public_key,
+          x25519PublicKey: item.x25519_public_key,
+        }));
+        replaceContacts(contacts);
+      })
+      .catch(() => {});
+  }, [currentUser?.id, replaceContacts]);
 
   const handleCreateConversation = (contact: { id: string; name: string }) => {
     const now = new Date().toISOString();
@@ -109,6 +147,20 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
               type="button"
             >
               <Plus size={16} className="text-muted-foreground" />
+            </button>
+
+            <button
+              onClick={() =>
+                setShowSignatureDialog(true)
+              }
+              className="w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center transition-colors"
+              title="Ký file"
+              type="button"
+            >
+              <FileSignature
+                size={16}
+                className="text-muted-foreground"
+              />
             </button>
 
             <button
@@ -160,6 +212,8 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
       </div>
 
       <div className="px-3 py-3 border-t border-[var(--border)]">
+        <div className="mb-3 text-[10px] text-zinc-500">Verified contacts: {trustedContacts.length}</div>
+
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-xs font-bold text-white">
             Y
@@ -167,20 +221,95 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
 
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-foreground truncate">
-              You (frontend)
+              {currentUser?.displayName || "You"}
             </p>
             <p className="text-[10px] text-muted-foreground truncate">
-              Local peer
+              {currentUser?.email || "Local peer"}
             </p>
           </div>
+
+          <button
+            type="button"
+            onClick={logout}
+            className="rounded-md border border-zinc-700 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+          >
+            Logout
+          </button>
         </div>
       </div>
 
       <StartConversationDialog
         open={showDialog}
         onClose={() => setShowDialog(false)}
-        contacts={DEMO_CONTACTS}
+        trustedContacts={trustedContacts.map((contact) => ({
+          id: contact.id,
+          name: contact.name,
+          peerId: contact.peerId,
+          fingerprint: contact.fingerprint,
+          trusted: contact.trusted,
+        }))}
         onCreate={handleCreateConversation}
+        connectTo={connectTo}
+        setConnectTo={setConnectTo}
+        connectionId={connectionId}
+        setConnectionId={setConnectionId}
+        verifyCode={verifyCode}
+        setVerifyCode={setVerifyCode}
+        connectionMsg={connectionMsg}
+        devCode={devCode}
+        onSendRequest={async () => {
+          if (!currentUser?.id || !connectTo.trim()) return;
+          try {
+            const result = await requestConnection({
+              from_user: currentUser.id,
+              to: connectTo.trim(),
+            });
+            setConnectionMsg(`${result.message} (${result.connection_id})`);
+            setConnectionId(result.connection_id ?? "");
+            setDevCode(result.dev_code ?? "");
+          } catch (error) {
+            setConnectionMsg(error instanceof Error ? error.message : "Request failed");
+          }
+        }}
+        onVerifyConnection={async () => {
+          if (!currentUser?.id || !connectionId.trim() || !verifyCode.trim()) return false;
+          try {
+            await verifyConnection({
+              connection_id: connectionId.trim(),
+              user: currentUser.id,
+              code: verifyCode.trim(),
+            });
+            setConnectionMsg("Connection verified");
+            const result = await listTrustedContacts(currentUser.id);
+            replaceContacts(
+              result.contacts.map((item) => ({
+                id: item.user_id || item.email,
+                connectionId: item.connection_id,
+                name: item.display_name || item.email,
+                peerId: item.user_id || item.email,
+                trustLevel: item.trusted ? ("verified" as const) : ("untrusted" as const),
+                trusted: item.trusted,
+                keyChanged: Boolean(item.key_changed),
+                isOnline: false,
+                createdAt: item.verified_at || new Date().toISOString(),
+                verifiedAt: item.verified_at,
+                fingerprint: item.key_fingerprint,
+                ed25519PublicKey: item.ed25519_public_key,
+                x25519PublicKey: item.x25519_public_key,
+              }))
+            );
+            return true;
+          } catch (error) {
+            setConnectionMsg(error instanceof Error ? error.message : "Verify failed");
+            return false;
+          }
+        }}
+      />
+      <SignatureDialog
+        open={showSignatureDialog}
+        onClose={() =>
+          setShowSignatureDialog(false)
+        }
       />
     </div>
   );
@@ -223,11 +352,20 @@ function ConnectionPill({
 
   if (error || attempts > 0) {
     return (
-      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20">
-        <WifiOff size={11} className="text-red-400" />
+      <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20">
+        <WifiOff size={11} className="text-red-400 shrink-0" />
         <span className="text-[10px] font-medium text-red-400 truncate">
           {attempts > 0 ? `Reconnecting… (${attempts})` : "Disconnected"}
         </span>
+        <button
+          type="button"
+          onClick={() => {
+            websocketService.connect().catch(() => {});
+          }}
+          className="ml-auto rounded border border-red-400/40 px-1.5 py-0.5 text-[10px] text-red-200 hover:bg-red-500/20"
+        >
+          Reconnect now
+        </button>
       </div>
     );
   }

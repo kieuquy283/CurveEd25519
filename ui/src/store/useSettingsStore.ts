@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Settings store with local persistence.
  */
 import { create } from "zustand";
@@ -22,8 +22,10 @@ const DEFAULT_PREFS: UiPreferences = {
   enableDesktopNotifications: false,
   enableTypingIndicators: true,
   enableReadReceipts: true,
-  wsEndpoint: "ws://localhost:8765",
-  localPeerId: "frontend",
+  wsEndpoint: process.env.NEXT_PUBLIC_WS_URL || "ws://127.0.0.1:8765",
+  localPeerId:
+    process.env.NEXT_PUBLIC_USER_ID ||
+    "frontend",
 };
 
 const STORAGE_KEY = "mmatt_settings_v1";
@@ -78,3 +80,4 @@ if (typeof window !== "undefined") {
     }
   });
 }
+

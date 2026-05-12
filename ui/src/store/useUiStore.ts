@@ -1,4 +1,4 @@
-/**
+﻿/**
  * UI preferences and session settings store (persisted).
  */
 
@@ -27,8 +27,10 @@ const defaultPreferences: UiPreferences = {
   enableDesktopNotifications: true,
   enableTypingIndicators: true,
   enableReadReceipts: true,
-  wsEndpoint: "ws://localhost:8765",
-  localPeerId: "frontend",
+  wsEndpoint: process.env.NEXT_PUBLIC_WS_URL || "ws://127.0.0.1:8765",
+  localPeerId:
+    process.env.NEXT_PUBLIC_USER_ID ||
+    "frontend",
 };
 
 export const useUiStore = create<UiStore>()(
@@ -52,3 +54,4 @@ export const useUiStore = create<UiStore>()(
     { name: "UiStore" }
   )
 );
+

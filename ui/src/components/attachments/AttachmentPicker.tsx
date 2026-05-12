@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useRef } from "react";
 import { Paperclip } from "lucide-react";
@@ -14,9 +14,9 @@ import {
   PacketType,
 } from "@/types/packets";
 import { useChatStore } from "@/store/useChatStore";
-
-const CURRENT_USER_ID = "frontend";
-const API_BASE_URL = "http://127.0.0.1:8000";
+import { getCurrentUserId } from "@/store/useAuthStore";
+import { getApiBaseUrl } from "@/config/env";
+const API_BASE_URL = getApiBaseUrl();
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
   const bytes = new Uint8Array(buffer);
@@ -46,6 +46,7 @@ export default function AttachmentPicker({
     }
 
     const chatStore = useChatStore.getState();
+    const currentUserId = getCurrentUserId();
 
     const attachmentId = `att-${Date.now()}-${Math.random()
       .toString(36)
@@ -68,7 +69,7 @@ export default function AttachmentPicker({
     chatStore.addMessage({
       id: messageId,
       conversationId,
-      from: CURRENT_USER_ID,
+      from: currentUserId,
       to: conversationId,
       text: "",
       timestamp: now,
@@ -92,7 +93,7 @@ export default function AttachmentPicker({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          sender: CURRENT_USER_ID,
+          sender: currentUserId,
           recipient: conversationId,
           filename: file.name,
           mime_type: file.type || "application/pdf",
@@ -126,7 +127,7 @@ export default function AttachmentPicker({
       const packet = {
         packet_id: buildPacketId(),
         packet_type: PacketType.MESSAGE,
-        sender_id: CURRENT_USER_ID,
+        sender_id: currentUserId,
         receiver_id: conversationId,
         created_at: buildTimestamp(),
         requires_ack: true,
@@ -183,3 +184,4 @@ export default function AttachmentPicker({
     </div>
   );
 }
+
