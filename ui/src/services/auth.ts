@@ -16,12 +16,16 @@ interface RegisterResponse {
   ok: boolean;
   requires_verification: boolean;
   message: string;
+  email_sent?: boolean;
+  error?: string;
   dev_code?: string;
 }
 
 interface GenericResponse {
   ok: boolean;
   message: string;
+  email_sent?: boolean;
+  error?: string;
   dev_code?: string;
 }
 

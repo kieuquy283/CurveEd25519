@@ -15,11 +15,18 @@ from app.profiles.profile_service import ProfileService
 from app.services.email_service import EmailService
 
 
+def _log(message: str) -> None:
+    ts = datetime.now(timezone.utc).isoformat()
+    print(f"[auth][{ts}] {message}")
+
+
 @dataclass
 class AuthResult:
     ok: bool
     message: str
     dev_code: str | None = None
+    email_sent: bool = False
+    error: str | None = None
 
 
 class AuthService:
@@ -38,6 +45,7 @@ class AuthService:
         self.email_service = EmailService()
 
         env = (os.getenv("APP_ENV") or os.getenv("ENV") or os.getenv("PYTHON_ENV") or "development").lower()
+        self.app_env = env
         self.is_development = env in {"dev", "development", "local", "test"}
         self.code_pepper = (os.getenv("AUTH_CODE_PEPPER") or "curveapp-local-pepper").encode("utf-8")
 
@@ -94,14 +102,33 @@ class AuthService:
 
         self._save_accounts(accounts)
 
+        _log(f"register: send verification called for email={normalized_email}")
         sent = self._send_verification_email(normalized_email, code)
-        if not sent:
-            print("[auth] SMTP not configured or send failed. Verification email not delivered.")
+
+        if sent:
+            return AuthResult(
+                ok=True,
+                message="Verification code sent to your email.",
+                email_sent=True,
+            )
+
+        smtp_error = self.email_service.last_error or "SMTP send failed"
+        _log(f"register: verification email failed for email={normalized_email}: {smtp_error}")
+
+        if self.is_development:
+            return AuthResult(
+                ok=True,
+                message="SMTP unavailable. Development fallback enabled.",
+                dev_code=code,
+                email_sent=False,
+                error=f"{self.email_service.last_error_class or 'SMTPError'}: {smtp_error}",
+            )
 
         return AuthResult(
-            ok=True,
-            message="Verification code sent",
-            dev_code=code if self.is_development and not sent else None,
+            ok=False,
+            message="Account created but verification email could not be sent. Please retry later.",
+            email_sent=False,
+            error=f"{self.email_service.last_error_class or 'SMTPError'}: {smtp_error}",
         )
 
     def login(self, *, email: str, password: str) -> dict[str, Any]:
@@ -168,14 +195,33 @@ class AuthService:
         account["updated_at"] = self._utc_now()
         self._save_accounts(accounts)
 
+        _log(f"resend_verification: send verification called for email={normalized_email}")
         sent = self._send_verification_email(normalized_email, code)
-        if not sent:
-            print("[auth] SMTP not configured or send failed. Verification email not delivered.")
+
+        if sent:
+            return AuthResult(
+                ok=True,
+                message="Verification code sent to your email.",
+                email_sent=True,
+            )
+
+        smtp_error = self.email_service.last_error or "SMTP send failed"
+        _log(f"resend_verification: verification email failed for email={normalized_email}: {smtp_error}")
+
+        if self.is_development:
+            return AuthResult(
+                ok=True,
+                message="SMTP unavailable. Development fallback enabled.",
+                dev_code=code,
+                email_sent=False,
+                error=f"{self.email_service.last_error_class or 'SMTPError'}: {smtp_error}",
+            )
 
         return AuthResult(
-            ok=True,
-            message="Verification code sent",
-            dev_code=code if self.is_development and not sent else None,
+            ok=False,
+            message="Could not send verification email. Please retry later.",
+            email_sent=False,
+            error=f"{self.email_service.last_error_class or 'SMTPError'}: {smtp_error}",
         )
 
     def request_password_reset(self, *, email: str) -> AuthResult:
@@ -183,7 +229,7 @@ class AuthService:
         accounts = self._load_accounts()
         account = self._find_account(accounts, normalized_email)
 
-        generic = AuthResult(ok=True, message="If the account exists, a reset code has been sent.")
+        generic = AuthResult(ok=True, message="If the account exists, a reset code has been sent.", email_sent=False)
         if not account:
             return generic
 
@@ -195,10 +241,24 @@ class AuthService:
 
         sent = self._send_reset_email(normalized_email, code)
         if not sent:
-            print("[auth] SMTP not configured or send failed. Reset email not delivered.")
+            _log(f"request_password_reset: reset email failed for email={normalized_email}: {self.email_service.last_error or 'SMTP send failed'}")
 
-        generic.dev_code = code if self.is_development and not sent else None
-        return generic
+        if sent:
+            generic.email_sent = True
+            return generic
+
+        smtp_error = self.email_service.last_error or "SMTP send failed"
+        if self.is_development:
+            generic.dev_code = code
+            generic.error = f"{self.email_service.last_error_class or 'SMTPError'}: {smtp_error}"
+            return generic
+
+        return AuthResult(
+            ok=False,
+            message="Could not send password reset email. Please retry later.",
+            email_sent=False,
+            error=f"{self.email_service.last_error_class or 'SMTPError'}: {smtp_error}",
+        )
 
     def reset_password(self, *, email: str, code: str, new_password: str) -> None:
         normalized_email = self._normalize_email(email)
@@ -214,6 +274,33 @@ class AuthService:
         account["reset_expires_at"] = None
         account["updated_at"] = self._utc_now()
         self._save_accounts(accounts)
+
+    def get_email_config_status(self) -> dict[str, object]:
+        status = self.email_service.config_status()
+        return {
+            "ok": True,
+            "app_env": status["app_env"],
+            "smtp_host": status["smtp_host"],
+            "smtp_port": status["smtp_port"],
+            "smtp_from": status["smtp_from"],
+            "has_username": status["has_username"],
+            "has_password": status["has_password"],
+            "use_tls": status["smtp_use_tls"],
+        }
+
+    def send_test_email(self, to: str) -> tuple[bool, str | None]:
+        code = "000000"
+        sent = self.email_service.send_code_email(
+            to_email=to,
+            subject="Secure Messenger test email",
+            code=code,
+            purpose="Email service test",
+        )
+        if sent:
+            return True, None
+        err = self.email_service.last_error or "SMTP send failed"
+        cls = self.email_service.last_error_class or "SMTPError"
+        return False, f"{cls}: {err}"
 
     def _profile_for_account(self, account: dict[str, Any]) -> dict[str, Any]:
         profile_id = str(account.get("profile_id") or "").strip()
@@ -346,23 +433,17 @@ class AuthService:
             return False
 
     def _send_verification_email(self, email: str, code: str) -> bool:
-        try:
-            return self.email_service.send_code_email(
-                to_email=email,
-                subject="Secure Messenger verification code",
-                code=code,
-                purpose="Email verification",
-            )
-        except Exception:
-            return False
+        return self.email_service.send_code_email(
+            to_email=email,
+            subject="Secure Messenger verification code",
+            code=code,
+            purpose="Email verification",
+        )
 
     def _send_reset_email(self, email: str, code: str) -> bool:
-        try:
-            return self.email_service.send_code_email(
-                to_email=email,
-                subject="Secure Messenger password reset code",
-                code=code,
-                purpose="Password reset",
-            )
-        except Exception:
-            return False
+        return self.email_service.send_code_email(
+            to_email=email,
+            subject="Secure Messenger password reset code",
+            code=code,
+            purpose="Password reset",
+        )

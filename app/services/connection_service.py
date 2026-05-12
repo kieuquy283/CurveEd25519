@@ -87,13 +87,18 @@ class ConnectionService:
 
         sent = self._send_connection_email(recipient["email"], requester["email"], code)
         response: dict[str, Any] = {
-            "ok": True,
+            "ok": sent or self.is_development,
             "status": "pending",
             "connection_id": existing["id"],
-            "message": "Connection verification code sent",
+            "message": "Connection verification code sent" if sent else "Could not send connection verification email.",
+            "email_sent": sent,
         }
         if self.is_development and not sent:
             response["dev_code"] = code
+        if not sent:
+            err = self.email_service.last_error or "SMTP send failed"
+            cls = self.email_service.last_error_class or "SMTPError"
+            response["error"] = f"{cls}: {err}"
         return response
 
     def verify_connection(self, *, connection_id: str, user: str, code: str) -> dict[str, Any]:

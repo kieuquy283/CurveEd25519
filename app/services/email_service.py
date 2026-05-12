@@ -2,7 +2,13 @@
 
 import os
 import smtplib
+from datetime import datetime, timezone
 from email.message import EmailMessage
+
+
+def _log(message: str) -> None:
+    ts = datetime.now(timezone.utc).isoformat()
+    print(f"[email][{ts}] {message}")
 
 
 class EmailService:
@@ -18,12 +24,51 @@ class EmailService:
             "yes",
             "on",
         }
+        self.app_env = (
+            os.getenv("APP_ENV")
+            or os.getenv("ENV")
+            or os.getenv("PYTHON_ENV")
+            or "development"
+        ).strip().lower()
+        self.is_development = self.app_env in {"dev", "development", "local", "test"}
+        self.last_error: str | None = None
+        self.last_error_class: str | None = None
 
     def is_configured(self) -> bool:
-        return bool(self.host and self.port and self.sender)
+        return bool(
+            self.host
+            and self.port
+            and self.sender
+            and self.username
+            and self.password
+        )
+
+    def config_status(self) -> dict[str, object]:
+        return {
+            "smtp_host": self.host or "",
+            "smtp_port": self.port,
+            "smtp_from": self.sender or "",
+            "has_username": bool(self.username),
+            "has_password": bool(self.password),
+            "smtp_use_tls": self.use_tls,
+            "app_env": self.app_env,
+            "configured": self.is_configured(),
+        }
 
     def send_code_email(self, *, to_email: str, subject: str, code: str, purpose: str) -> bool:
+        self.last_error = None
+        self.last_error_class = None
+        status = self.config_status()
+        _log(
+            "send_code_email requested "
+            f"host={status['smtp_host']} port={status['smtp_port']} from={status['smtp_from']} "
+            f"has_username={status['has_username']} has_password={status['has_password']} tls={status['smtp_use_tls']}"
+        )
+
         if not self.is_configured():
+            self.last_error = "SMTP is not fully configured"
+            self.last_error_class = "SMTPConfigurationError"
+            _log("send_code_email skipped: SMTP is not fully configured")
             return False
 
         msg = EmailMessage()
@@ -43,11 +88,21 @@ class EmailService:
             )
         )
 
-        with smtplib.SMTP(self.host, self.port, timeout=10) as smtp:
-            if self.use_tls:
-                smtp.starttls()
-            if self.username:
-                smtp.login(self.username, self.password)
-            smtp.send_message(msg)
-
-        return True
+        try:
+            if self.port == 465:
+                with smtplib.SMTP_SSL(self.host, self.port, timeout=15) as smtp:
+                    smtp.login(self.username, self.password)
+                    smtp.send_message(msg)
+            else:
+                with smtplib.SMTP(self.host, self.port, timeout=15) as smtp:
+                    if self.use_tls:
+                        smtp.starttls()
+                    smtp.login(self.username, self.password)
+                    smtp.send_message(msg)
+            _log(f"send_code_email success to={to_email} subject={subject}")
+            return True
+        except Exception as exc:
+            self.last_error_class = exc.__class__.__name__
+            self.last_error = str(exc)
+            _log(f"send_code_email failed to={to_email} subject={subject}: {exc}")
+            return False

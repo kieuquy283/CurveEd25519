@@ -64,8 +64,12 @@ export default function AuthScreen() {
       if (result.dev_code) {
         setDevCode(result.dev_code);
       }
-      setMessage("Verification code sent to your email.");
-      setMode("verify");
+      if (result.email_sent) {
+        setMessage("Verification code sent to your email.");
+        setMode("verify");
+      } else {
+        setMessage(`Could not send verification email: ${result.error || result.message}`);
+      }
     } catch {
       // error is already stored in auth store
     }
@@ -94,7 +98,11 @@ export default function AuthScreen() {
       if (result.dev_code) {
         setDevCode(result.dev_code);
       }
-      setMessage("Verification code sent to your email.");
+      if (result.email_sent === false) {
+        setMessage(`Could not send verification email: ${result.error || result.message}`);
+      } else {
+        setMessage("Verification code sent to your email.");
+      }
     } catch (resendError) {
       setMessage(resendError instanceof Error ? resendError.message : "Failed to resend verification code.");
     }
@@ -109,8 +117,12 @@ export default function AuthScreen() {
       if (result.dev_code) {
         setDevCode(result.dev_code);
       }
-      setMessage(result.message || "If the account exists, a reset code has been sent.");
-      setMode("reset");
+      if (result.email_sent === false && result.error) {
+        setMessage(`Could not send verification email: ${result.error}`);
+      } else {
+        setMessage(result.message || "If the account exists, a reset code has been sent.");
+        setMode("reset");
+      }
     } catch {
       // error is already stored in auth store
     }

@@ -39,6 +39,10 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+class TestEmailRequest(BaseModel):
+    to: str
+
+
 @router.post("/login")
 def login(req: LoginRequest):
     try:
@@ -70,7 +74,10 @@ def register(req: RegisterRequest):
         "ok": result.ok,
         "requires_verification": True,
         "message": result.message,
+        "email_sent": result.email_sent,
     }
+    if result.error:
+        response["error"] = result.error
     if result.dev_code:
         response["dev_code"] = result.dev_code
     return response
@@ -99,7 +106,10 @@ def resend_verification(req: ResendVerificationRequest):
     response = {
         "ok": result.ok,
         "message": result.message,
+        "email_sent": result.email_sent,
     }
+    if result.error:
+        response["error"] = result.error
     if result.dev_code:
         response["dev_code"] = result.dev_code
     return response
@@ -111,7 +121,10 @@ def request_password_reset(req: RequestPasswordResetRequest):
     response = {
         "ok": result.ok,
         "message": result.message,
+        "email_sent": result.email_sent,
     }
+    if result.error:
+        response["error"] = result.error
     if result.dev_code:
         response["dev_code"] = result.dev_code
     return response
@@ -131,4 +144,19 @@ def reset_password(req: ResetPasswordRequest):
     return {
         "ok": True,
         "message": "Password reset successful",
+    }
+
+
+@router.get("/email-config")
+def email_config():
+    return service.get_email_config_status()
+
+
+@router.post("/test-email")
+def test_email(req: TestEmailRequest):
+    sent, error = service.send_test_email(req.to)
+    return {
+        "ok": sent,
+        "sent": sent,
+        "error": error,
     }

@@ -16,9 +16,9 @@ interface AuthStore {
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  register: (email: string, displayName: string, password: string) => Promise<{ dev_code?: string }>;
+  register: (email: string, displayName: string, password: string) => Promise<{ dev_code?: string; email_sent?: boolean; message: string; error?: string }>;
   verifyEmail: (email: string, code: string) => Promise<void>;
-  requestPasswordReset: (email: string) => Promise<{ dev_code?: string; message: string }>;
+  requestPasswordReset: (email: string) => Promise<{ dev_code?: string; message: string; email_sent?: boolean; error?: string }>;
   resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
   clearError: () => void;
 }
@@ -71,7 +71,12 @@ export const useAuthStore = create<AuthStore>()(
               password,
             });
             set({ loading: false, error: null });
-            return { dev_code: result.dev_code };
+            return {
+              dev_code: result.dev_code,
+              email_sent: result.email_sent,
+              message: result.message,
+              error: result.error,
+            };
           } catch (error) {
             set({
               loading: false,
@@ -100,7 +105,12 @@ export const useAuthStore = create<AuthStore>()(
           try {
             const result = await requestPasswordReset({ email });
             set({ loading: false, error: null });
-            return { dev_code: result.dev_code, message: result.message };
+            return {
+              dev_code: result.dev_code,
+              message: result.message,
+              email_sent: result.email_sent,
+              error: result.error,
+            };
           } catch (error) {
             set({
               loading: false,

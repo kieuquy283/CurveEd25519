@@ -963,3 +963,158 @@ Manual test path:
 ### Result
 - Build passed successfully.
 - Remaining output includes non-blocking ESLint warnings for unused symbols in unrelated files.
+
+## 2026-05-12 - Email Verification Delivery Fix
+
+### Fixed
+- Registration now attempts real SMTP verification email delivery and reports truthful status.
+- Resend verification now regenerates code, replaces old hash/expiry, and reports truthful email send status.
+- Verify email flow keeps secure hash+expiry validation and clears verification fields on success.
+- Email service now supports:
+  - STARTTLS on port 587 (`SMTP_USE_TLS=true`)
+  - SMTP SSL on port 465
+  - authenticated send via `SMTP_USERNAME`/`SMTP_PASSWORD`
+  - sender via `SMTP_FROM`
+- Added non-secret diagnostics/logging for SMTP config and send success/failure.
+- Added backend diagnostics endpoint:
+  - `GET /api/auth/email-config`
+- Added development-only email test endpoint:
+  - `POST /api/auth/test-email`
+
+### Production-safe behavior
+- No password or SMTP secret logging.
+- No verification code exposure in production responses.
+- `dev_code` fallback is only returned when `APP_ENV=development` and email send fails.
+- In production, register/resend return clear SMTP failure status (`ok=false`, `email_sent=false`) when delivery fails.
+
+### Files Changed
+- `app/services/email_service.py`
+- `app/services/auth_service.py`
+- `app/api/auth_api.py`
+- `server.py`
+
+### Render env variables required
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_FROM`
+- `SMTP_USE_TLS=true`
+- `APP_ENV=production`
+- `FRONTEND_ORIGIN=<your frontend origin(s)>`
+
+### Checks Run
+- `python -m compileall app server.py` (pass)
+
+### How to test
+1. Configure Render env:
+   - `SMTP_HOST=smtp.gmail.com`
+   - `SMTP_PORT=587`
+   - `SMTP_USERNAME=<gmail>`
+   - `SMTP_PASSWORD=<gmail app password>`
+   - `SMTP_FROM=<same gmail>`
+   - `SMTP_USE_TLS=true`
+   - `APP_ENV=production`
+2. Restart/redeploy backend.
+3. Call `GET /api/auth/email-config` and verify:
+   - `configured=true`, `has_username=true`, `has_password=true`, expected host/port/from.
+4. Register new account with real email.
+5. Confirm verification email arrives.
+6. Verify with code via `/api/auth/verify-email`.
+7. Login succeeds.
+8. Test `/api/auth/resend-verification` for unverified account.
+9. Test forgot-password flow code delivery.
+
+### Limitations
+- Local JSON account store remains non-production-grade storage.
+- SMTP provider policies (Gmail app password, anti-spam) can still block delivery externally.
+
+## 2026-05-12 - Focused SMTP Delivery Debug/Fix (Render Production)
+
+### Fixed
+- Reworked SMTP send flow for robust production delivery and diagnostics.
+- Register/resend/request-reset now return truthful `email_sent` and safe `error` on send failure.
+- No more silent "code sent" success when SMTP fails in production.
+- Connection request email flow now also reports `email_sent` and safe error details.
+
+### SMTP implementation updates
+- `app/services/email_service.py`:
+  - Supports STARTTLS path for port 587 (`SMTP` + `ehlo()` + `starttls()` + `ehlo()` + `login()` + `send_message()`).
+  - Supports SSL path for port 465 (`SMTP_SSL` + `login()` + `send_message()`).
+  - Parses env vars via `os.getenv` directly (Render-compatible).
+  - Adds non-secret logs for host/port/from/use_tls and credential presence.
+  - Logs exception class + message on failure.
+  - Never logs SMTP password.
+
+### Auth behavior updates
+- `app/services/auth_service.py`:
+  - `AuthResult` now includes `email_sent` and `error`.
+  - `register` and `resend_verification`:
+    - success => `email_sent=true`
+    - failure in development => `dev_code` fallback + `email_sent=false`
+    - failure in production => `ok=false`, `email_sent=false`, safe `error`
+  - `request_password_reset`:
+    - returns `email_sent` based on actual send result
+    - production send failure returns `ok=false` with safe `error`
+
+- `app/api/auth_api.py`:
+  - Surfaces `email_sent` and `error` fields in register/resend/reset-request responses.
+  - `GET /api/auth/email-config` returns non-secret SMTP config status.
+  - `POST /api/auth/test-email` available for deployment debugging (production-safe response, no secrets).
+
+### Connection email updates
+- `app/services/connection_service.py`:
+  - `/api/connections/request` now returns:
+    - `email_sent: true|false`
+    - `ok` aligned with delivery result in production
+    - safe `error` on SMTP failure
+    - `dev_code` only in development
+
+### Frontend status messaging
+- `ui/src/services/auth.ts`
+- `ui/src/store/useAuthStore.ts`
+- `ui/src/components/auth/AuthScreen.tsx`
+
+Updated UI behavior:
+- Show "Verification code sent to your email" only when `email_sent=true`.
+- Show clear failure message when `email_sent=false` with backend safe error.
+- Keep `dev_code` display for development fallback.
+
+### Added/confirmed endpoints
+- `GET /api/auth/email-config`
+- `POST /api/auth/test-email`
+
+### Files changed
+- `app/services/email_service.py`
+- `app/services/auth_service.py`
+- `app/api/auth_api.py`
+- `app/services/connection_service.py`
+- `ui/src/services/auth.ts`
+- `ui/src/store/useAuthStore.ts`
+- `ui/src/components/auth/AuthScreen.tsx`
+
+### Render env required
+- `SMTP_HOST=smtp.gmail.com`
+- `SMTP_PORT=587`
+- `SMTP_USERNAME=<real gmail>`
+- `SMTP_PASSWORD=<gmail app password>`
+- `SMTP_FROM=<same gmail>`
+- `SMTP_USE_TLS=true`
+- `APP_ENV=production`
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+- `cd ui && npm run build` (pass)
+
+### Manual production test
+1. Redeploy Render with env above.
+2. Open `/api/auth/email-config` and confirm:
+   - `has_username=true`
+   - `has_password=true`
+   - `smtp_host=smtp.gmail.com`
+   - `smtp_port=587`
+3. Call `POST /api/auth/test-email` with your email.
+4. Check Render logs for send attempt and success/failure class/message.
+5. Register new account and confirm verification email arrives.
+6. Verify code and login.
+7. Test resend verification and forgot-password request.
