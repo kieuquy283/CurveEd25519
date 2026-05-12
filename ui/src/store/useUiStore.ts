@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 import { UiPreferences } from "@/types/models";
+import { getWsUrl } from "@/config/env";
 
 interface UiStore extends UiPreferences {
   // Panel state
@@ -27,7 +28,7 @@ const defaultPreferences: UiPreferences = {
   enableDesktopNotifications: true,
   enableTypingIndicators: true,
   enableReadReceipts: true,
-  wsEndpoint: process.env.NEXT_PUBLIC_WS_URL || "ws://127.0.0.1:8765",
+  wsEndpoint: getWsUrl(),
   localPeerId:
     process.env.NEXT_PUBLIC_USER_ID ||
     "frontend",

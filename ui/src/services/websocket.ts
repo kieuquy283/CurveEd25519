@@ -29,17 +29,7 @@ interface WebSocketServiceConfig {
 }
 
 function resolveDefaultWsUrl(): string {
-  const envUrl = getWsUrl();
-  if (envUrl && envUrl.trim()) {
-    return envUrl.trim();
-  }
-
-  if (typeof window !== "undefined") {
-    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    return `${scheme}://${window.location.hostname}:8765`;
-  }
-
-  return "ws://127.0.0.1:8765";
+  return getWsUrl().trim();
 }
 
 const DEFAULT_CONFIG: WebSocketServiceConfig = {
@@ -93,6 +83,7 @@ class WebSocketService {
 
     return new Promise<void>((resolve, reject) => {
       try {
+        console.info(`[WS] Connecting to ${this.config.url}`);
         this.socket = new WebSocket(this.config.url);
 
         this.connectTimeoutTimer = setTimeout(() => {
@@ -134,9 +125,12 @@ class WebSocketService {
           await this.handleRawMessage(event.data as string);
         };
 
-        this.socket.onclose = () => {
+        this.socket.onclose = (event: CloseEvent) => {
           this.clearConnectTimer();
           this.isConnected = false;
+          console.warn(
+            `[WS] closed url=${this.config.url} code=${event.code} reason=${event.reason || "<empty>"}`
+          );
 
           store.setConnected(false);
           store.setConnecting(false);
@@ -159,6 +153,7 @@ class WebSocketService {
         this.socket.onerror = (event: Event) => {
           this.clearConnectTimer();
           const errorMessage = `WebSocket connection failed: ${this.config.url}. Ensure WS server is running.`;
+          console.error("[WS] error event:", event);
 
           store.setError(errorMessage);
           store.setConnecting(false);

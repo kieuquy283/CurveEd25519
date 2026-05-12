@@ -4,6 +4,7 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { UiPreferences } from "@/types/models";
+import { getWsUrl } from "@/config/env";
 
 export interface SettingsState {
   prefs: UiPreferences;
@@ -22,7 +23,7 @@ const DEFAULT_PREFS: UiPreferences = {
   enableDesktopNotifications: false,
   enableTypingIndicators: true,
   enableReadReceipts: true,
-  wsEndpoint: process.env.NEXT_PUBLIC_WS_URL || "ws://127.0.0.1:8765",
+  wsEndpoint: getWsUrl(),
   localPeerId:
     process.env.NEXT_PUBLIC_USER_ID ||
     "frontend",

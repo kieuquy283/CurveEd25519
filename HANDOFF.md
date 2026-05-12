@@ -1330,3 +1330,65 @@ The same `EmailService` is used by and now supports Resend for:
 
 ### Render note
 - Render free filesystem is ephemeral; JSON account/profile files are not durable across rebuild/restart.
+
+## 2026-05-12 - Production API/WS URL and Mixed Content Fix
+
+### Fixed frontend URL normalization
+- Centralized URL normalization in `ui/src/config/env.ts`.
+- `NEXT_PUBLIC_API_BASE_URL` is normalized and protocol-validated:
+  - strips trailing slash
+  - rejects protocol-relative URLs (`//...`)
+  - prepends `https://` automatically in production when protocol is missing
+  - local fallback remains `http://127.0.0.1:8000`
+- `NEXT_PUBLIC_WS_URL` is normalized similarly:
+  - rejects protocol-relative URLs
+  - prepends `wss://` automatically in production when protocol is missing
+  - local fallback remains `ws://127.0.0.1:8765`
+- Removed unsafe fallback that built API URLs from `window.location.hostname:8000` (source of mixed-content/downgrade risk).
+
+### Frontend wiring updates
+- WebSocket service now uses centralized `getWsUrl()` only and logs:
+  - connect target URL once
+  - close code/reason
+  - error event details
+- UI/settings default websocket endpoint now uses centralized config.
+
+### Backend WebSocket compatibility route
+- Added FastAPI websocket endpoint:
+  - `@app.websocket("/ws")`
+- Behavior:
+  - accepts socket
+  - expects first packet type `connect`
+  - registers client by `sender_id`
+  - responds to `ping` with `pong`
+  - relays packets to `receiver_id` when connected
+- This provides compatibility for production `wss://<api-host>/ws` without breaking existing packet schema.
+
+### CORS/origin
+- Existing `FRONTEND_ORIGIN` + Vercel origin regex remains active in `server.py`.
+- Required on Render:
+  - `FRONTEND_ORIGIN=https://curve-ed25519.vercel.app`
+
+### Env examples
+- Updated `ui/.env.example` with local defaults and production notes:
+  - `NEXT_PUBLIC_API_BASE_URL=https://curveed25519-api.onrender.com`
+  - `NEXT_PUBLIC_WS_URL=wss://curveed25519-api.onrender.com/ws`
+
+### Files changed
+- `ui/src/config/env.ts`
+- `ui/src/services/websocket.ts`
+- `ui/src/store/useUiStore.ts`
+- `ui/src/store/useSettingsStore.ts`
+- `ui/.env.example`
+- `server.py`
+
+### Checks run
+- `cd ui && npm run build` (pass)
+- `python -m compileall app server.py` (pass)
+
+### Required production env (Vercel)
+- `NEXT_PUBLIC_API_BASE_URL=https://curveed25519-api.onrender.com`
+- `NEXT_PUBLIC_WS_URL=wss://curveed25519-api.onrender.com/ws`
+
+### Required production env (Render)
+- `FRONTEND_ORIGIN=https://curve-ed25519.vercel.app`
