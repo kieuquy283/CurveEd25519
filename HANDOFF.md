@@ -1529,3 +1529,38 @@ The same `EmailService` is used by and now supports Resend for:
 
 ### Checks run
 - `python -m compileall app server.py` (pass)
+
+## 2026-05-12 - Supabase app_accounts Schema Mismatch Fix
+
+### Root cause
+- Supabase upsert for `app_accounts` used raw account dict fields.
+- Existing Supabase table in production lacked at least `user_id`, causing:
+  - `Could not find the 'user_id' column of 'app_accounts' in the schema cache`
+
+### Fixed
+- `StorageRepository.upsert_account()` now builds schema-compatible payload for `app_accounts`.
+- Added payload key logging only (no values/secrets):
+  - `payload_keys=[...]`
+- Added unknown-column fallback retry for Supabase upsert:
+  - detects missing column from API error text
+  - removes that column from payload
+  - retries upsert
+- Preserves legacy/non-table fields in `metadata` jsonb when available.
+- `get_account()` / `list_accounts()` now hydrate key legacy fields from `metadata` if base columns are missing.
+
+### Email normalization
+- Account email normalization remains `strip().lower()` in repository and auth paths.
+
+### Files changed
+- `app/services/storage_repository.py`
+- `DEPLOY.md`
+
+### Supabase SQL updated
+- `app_accounts` SQL now includes:
+  - `user_id`
+  - `metadata jsonb`
+  - existing auth fields
+- Added migration helper (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`) for existing deployments.
+
+### Checks run
+- `python -m compileall app server.py` (pass)

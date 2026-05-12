@@ -90,6 +90,7 @@ SQL setup (run in Supabase SQL Editor):
 ```sql
 create table if not exists app_accounts (
   email text primary key,
+  user_id text,
   display_name text,
   password_hash text not null,
   verified boolean not null default false,
@@ -99,7 +100,8 @@ create table if not exists app_accounts (
   verification_expires_at timestamptz,
   reset_code_hash text,
   reset_expires_at timestamptz,
-  profile_id text
+  profile_id text,
+  metadata jsonb default '{}'::jsonb
 );
 
 create table if not exists app_profiles (
@@ -108,6 +110,15 @@ create table if not exists app_profiles (
   created_at timestamptz,
   updated_at timestamptz
 );
+
+-- Migration helper for existing app_accounts tables missing legacy columns
+alter table app_accounts add column if not exists user_id text;
+alter table app_accounts add column if not exists verification_code_hash text;
+alter table app_accounts add column if not exists verification_expires_at timestamptz;
+alter table app_accounts add column if not exists reset_code_hash text;
+alter table app_accounts add column if not exists reset_expires_at timestamptz;
+alter table app_accounts add column if not exists profile_id text;
+alter table app_accounts add column if not exists metadata jsonb default '{}'::jsonb;
 
 create table if not exists app_connections (
   id text primary key,

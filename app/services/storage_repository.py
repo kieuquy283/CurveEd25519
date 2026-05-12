@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ class StorageRepository:
         self.supabase_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
         self.app_env = (os.getenv("APP_ENV") or "development").strip().lower()
         self._supabase = None
+        self._missing_account_columns: set[str] = set()
 
         if self.storage_backend != "supabase":
             self._ensure_file_store()
@@ -64,11 +66,33 @@ class StorageRepository:
     def _write_rows(self, path: Path, rows: list[dict[str, Any]]) -> None:
         path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
 
+    @staticmethod
+    def _log(message: str) -> None:
+        ts = datetime.now(timezone.utc).isoformat()
+        print(f"[storage][{ts}] {message}")
+
+    @staticmethod
+    def _extract_missing_column(error_text: str) -> str | None:
+        match = re.search(r"Could not find the '([^']+)' column", error_text)
+        if not match:
+            return None
+        return match.group(1)
+
     # Accounts
     def list_accounts(self) -> list[dict[str, Any]]:
         if self.is_supabase():
             resp = self._supabase.table("app_accounts").select("*").execute()
-            return list(resp.data or [])
+            rows = list(resp.data or [])
+            out: list[dict[str, Any]] = []
+            for row in rows:
+                account = dict(row)
+                metadata = account.get("metadata")
+                if isinstance(metadata, dict):
+                    for key in ["user_id", "verification_code_hash", "verification_expires_at", "reset_code_hash", "reset_expires_at", "profile_id"]:
+                        if key not in account and key in metadata:
+                            account[key] = metadata.get(key)
+                out.append(account)
+            return out
         return self._read_rows(self.accounts_path)
 
     def get_account(self, email: str) -> dict[str, Any] | None:
@@ -76,7 +100,15 @@ class StorageRepository:
         if self.is_supabase():
             resp = self._supabase.table("app_accounts").select("*").eq("email", norm).limit(1).execute()
             data = list(resp.data or [])
-            return data[0] if data else None
+            if not data:
+                return None
+            account = dict(data[0])
+            metadata = account.get("metadata")
+            if isinstance(metadata, dict):
+                for key in ["user_id", "verification_code_hash", "verification_expires_at", "reset_code_hash", "reset_expires_at", "profile_id"]:
+                    if key not in account and key in metadata:
+                        account[key] = metadata.get(key)
+            return account
         for row in self._read_rows(self.accounts_path):
             if str(row.get("email") or "").strip().lower() == norm:
                 return row
@@ -88,7 +120,62 @@ class StorageRepository:
         if not account["email"]:
             return
         if self.is_supabase():
-            self._supabase.table("app_accounts").upsert(account, on_conflict="email").execute()
+            base_columns = [
+                "email",
+                "user_id",
+                "display_name",
+                "password_hash",
+                "verified",
+                "created_at",
+                "updated_at",
+                "verification_code_hash",
+                "verification_expires_at",
+                "reset_code_hash",
+                "reset_expires_at",
+                "profile_id",
+                "metadata",
+            ]
+            payload: dict[str, Any] = {}
+            for col in base_columns:
+                if col in self._missing_account_columns:
+                    continue
+                if col == "metadata":
+                    continue
+                if col in account:
+                    payload[col] = account.get(col)
+
+            legacy_fields = {
+                k: v
+                for k, v in account.items()
+                if k not in set(base_columns) and k not in {"password_hash"}
+            }
+            metadata = account.get("metadata") if isinstance(account.get("metadata"), dict) else {}
+            if isinstance(metadata, dict):
+                metadata = dict(metadata)
+            else:
+                metadata = {}
+            metadata.update(legacy_fields)
+            if "metadata" not in self._missing_account_columns:
+                payload["metadata"] = metadata
+
+            self._log(f"supabase upsert app_accounts payload_keys={sorted(payload.keys())}")
+            try:
+                self._supabase.table("app_accounts").upsert(payload, on_conflict="email").execute()
+            except Exception as exc:
+                err_text = str(exc)
+                missing = self._extract_missing_column(err_text)
+                if missing:
+                    self._missing_account_columns.add(missing)
+                    self._log(f"app_accounts missing column detected: {missing}; retrying without it")
+                    payload.pop(missing, None)
+                    if missing != "metadata":
+                        meta = payload.get("metadata")
+                        if isinstance(meta, dict) and missing in account:
+                            meta[missing] = account.get(missing)
+                    self._log(f"supabase retry app_accounts payload_keys={sorted(payload.keys())}")
+                    self._supabase.table("app_accounts").upsert(payload, on_conflict="email").execute()
+                else:
+                    raise
             return
         rows = self._read_rows(self.accounts_path)
         replaced = False
