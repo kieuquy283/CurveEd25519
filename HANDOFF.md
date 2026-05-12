@@ -1392,3 +1392,85 @@ The same `EmailService` is used by and now supports Resend for:
 
 ### Required production env (Render)
 - `FRONTEND_ORIGIN=https://curve-ed25519.vercel.app`
+
+## 2026-05-12 - Supabase Persistent Storage Backend
+
+### Implemented
+- Added storage backend repository with runtime switch:
+  - `STORAGE_BACKEND=supabase` => Supabase Postgres persistence
+  - fallback => local file JSON persistence for dev
+- Added Supabase client usage on backend only via:
+  - `SUPABASE_URL`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+- Added backend diagnostics:
+  - `GET /api/auth/debug-storage`
+
+### Repository methods added
+- account:
+  - list/get/upsert/replace
+- profile:
+  - get/upsert
+- connections:
+  - list/upsert/replace
+- signed files:
+  - save
+- debug:
+  - backend mode + config presence + counts
+
+### Auth/Profile persistence changes
+- `AuthService` now uses shared storage repository for account + profile persistence.
+- Email normalization (`strip().lower()`) is used consistently in auth and profile ensure flow.
+- On register/verify/login flows, profile existence is ensured and persisted in configured backend.
+
+### Connection persistence changes
+- `ConnectionService` now uses storage repository for connections.
+- Trusted-key snapshots persist via repository (Supabase or file fallback).
+
+### Signature/conversation backend alignment
+- `signature_api` now uses auth-backed account/profile resolution (same storage backend as auth).
+- `conversation_api` now resolves profiles through auth-backed account/profile logic instead of direct `data/profiles` file scanning.
+
+### Diagnostics
+- `GET /api/auth/debug-storage` returns:
+  - storage_backend
+  - has_supabase_url
+  - has_service_role_key
+  - account/profile/connection/signed_file counts
+- `GET /api/auth/debug-user` now includes `storage_backend`.
+
+### Files changed
+- `app/services/storage_repository.py` (new)
+- `app/services/auth_service.py`
+- `app/services/connection_service.py`
+- `app/api/auth_api.py`
+- `app/api/signature_api.py`
+- `app/api/conversation_api.py`
+- `requirements.txt` (added `supabase`)
+- `DEPLOY.md` (Supabase env + SQL table setup)
+
+### Checks run
+- `python -m compileall app server.py` (pass)
+
+### Required backend env (Render)
+- `STORAGE_BACKEND=supabase`
+- `SUPABASE_URL=...`
+- `SUPABASE_SERVICE_ROLE_KEY=...`
+- `APP_ENV=production`
+- `FRONTEND_ORIGIN=https://curve-ed25519.vercel.app`
+- `EMAIL_PROVIDER=resend`
+- `RESEND_API_KEY=...`
+- `EMAIL_FROM=...`
+
+### Security note
+- `SUPABASE_SERVICE_ROLE_KEY` must remain backend-only (Render), never frontend/Vercel.
+
+### Manual test plan
+1. Create required Supabase tables from `DEPLOY.md` SQL.
+2. Set Render env for Supabase backend.
+3. Redeploy Render.
+4. Check `GET /api/auth/debug-storage` => `storage_backend=supabase` and `has_service_role_key=true`.
+5. Register + verify user.
+6. Check `GET /api/auth/debug-user?email=<email>` => `account_exists=true`, `profile_exists=true`.
+7. Check `GET /api/signature/profile-status?user=<email>` => all key booleans true.
+8. Restart/redeploy Render and re-check persistence.
+9. Sign file + verify file.

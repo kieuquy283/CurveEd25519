@@ -68,3 +68,64 @@ npm run dev
 Local defaults used by frontend when env vars are missing:
 - API: `http://127.0.0.1:8000`
 - WS: `ws://127.0.0.1:8765`
+
+## Supabase Persistent Storage (Render Backend)
+
+Set these backend env vars on Render:
+- `STORAGE_BACKEND=supabase`
+- `SUPABASE_URL=https://<project>.supabase.co`
+- `SUPABASE_SERVICE_ROLE_KEY=<service-role-key>`
+- `APP_ENV=production`
+- `FRONTEND_ORIGIN=https://curve-ed25519.vercel.app`
+- `EMAIL_PROVIDER=resend`
+- `RESEND_API_KEY=<resend-key>`
+- `EMAIL_FROM=<verified-sender>`
+
+Security notes:
+- `SUPABASE_SERVICE_ROLE_KEY` is backend-only.
+- Do not put service role key in Vercel env.
+- Do not commit service role key to git.
+
+SQL setup (run in Supabase SQL Editor):
+```sql
+create table if not exists app_accounts (
+  email text primary key,
+  display_name text,
+  password_hash text not null,
+  verified boolean not null default false,
+  created_at timestamptz,
+  updated_at timestamptz,
+  verification_code_hash text,
+  verification_expires_at timestamptz,
+  reset_code_hash text,
+  reset_expires_at timestamptz,
+  profile_id text
+);
+
+create table if not exists app_profiles (
+  email text primary key,
+  profile_json jsonb not null,
+  created_at timestamptz,
+  updated_at timestamptz
+);
+
+create table if not exists app_connections (
+  id text primary key,
+  status text,
+  requester_email text,
+  recipient_email text,
+  connection_json jsonb,
+  verification_code_hash text,
+  verification_expires_at timestamptz,
+  created_at timestamptz,
+  verified_at timestamptz
+);
+
+create table if not exists app_signed_files (
+  id text primary key,
+  owner_email text,
+  filename text,
+  signed_file_json jsonb,
+  created_at timestamptz
+);
+```

@@ -13,6 +13,7 @@ from typing import Any
 
 from app.profiles.profile_service import ProfileService
 from app.services.email_service import EmailService
+from app.services.storage_repository import StorageRepository
 
 
 def _log(message: str) -> None:
@@ -43,6 +44,7 @@ class AuthService:
 
         self.profile_service = ProfileService(profiles_dir=profiles_dir)
         self.email_service = EmailService()
+        self.storage = StorageRepository(data_dir=str(self.accounts_path.parent))
 
         env = (os.getenv("APP_ENV") or os.getenv("ENV") or os.getenv("PYTHON_ENV") or "development").lower()
         self.app_env = env
@@ -62,13 +64,7 @@ class AuthService:
         if account and account.get("verified"):
             raise ValueError("Account already exists")
 
-        profile = self.profile_service.find_by_username(normalized_email)
-        if profile is None:
-            profile = self.profile_service.create_profile(
-                username=normalized_email,
-                display_name=display_name.strip() or normalized_email,
-                save=True,
-            )
+        profile = self._ensure_profile_exists(normalized_email, display_name.strip() or normalized_email)
 
         code = self._generate_code()
         code_hash = self._hash_code(code)
@@ -183,6 +179,7 @@ class AuthService:
         account["verification_code_hash"] = None
         account["verification_expires_at"] = None
         account["updated_at"] = self._utc_now()
+        self._ensure_profile_exists(normalized_email, account.get("display_name") or normalized_email)
         self._save_accounts(accounts)
 
     def resend_verification(self, *, email: str) -> AuthResult:
@@ -321,26 +318,29 @@ class AuthService:
         return False, f"{cls}: {err}"
 
     def _profile_for_account(self, account: dict[str, Any]) -> dict[str, Any]:
-        profile_id = str(account.get("profile_id") or "").strip()
-        if profile_id:
-            try:
-                return self.profile_service.load_profile(profile_id)
-            except Exception:
-                pass
-
         email = str(account.get("email") or "").strip().lower()
-        profile = self.profile_service.find_by_username(email)
-        if profile:
-            account["profile_id"] = profile.get("profile_id")
-            return profile
-
-        profile = self.profile_service.create_profile(
-            username=email,
-            display_name=account.get("display_name") or email,
-            save=True,
-        )
+        profile = self._ensure_profile_exists(email, str(account.get("display_name") or email))
         _log(f"profile auto-created email={email}")
         account["profile_id"] = profile.get("profile_id")
+        return profile
+
+    def _ensure_profile_exists(self, email: str, display_name: str) -> dict[str, Any]:
+        normalized_email = self._normalize_email(email)
+        profile = self.storage.get_profile(normalized_email)
+        if isinstance(profile, dict) and profile:
+            return profile
+
+        legacy = self.profile_service.find_by_username(normalized_email)
+        if legacy:
+            self.storage.upsert_profile(normalized_email, legacy)
+            return legacy
+
+        profile = self.profile_service.create_profile(
+            username=normalized_email,
+            display_name=display_name or normalized_email,
+            save=not self.storage.is_supabase(),
+        )
+        self.storage.upsert_profile(normalized_email, profile)
         return profile
 
     def debug_user_status(self, email: str) -> dict[str, Any]:
@@ -359,7 +359,7 @@ class AuthService:
                 except Exception:
                     profile = None
             if profile is None:
-                profile = self.profile_service.find_by_username(normalized_email)
+                profile = self.storage.get_profile(normalized_email)
 
         ed = (profile or {}).get("ed25519") or {}
         x = (profile or {}).get("x25519") or {}
@@ -367,6 +367,7 @@ class AuthService:
         return {
             "ok": True,
             "normalized_email": normalized_email,
+            "storage_backend": "supabase" if self.storage.is_supabase() else "file",
             "account_exists": account_exists,
             "account_verified": account_verified,
             "account_keys_or_id_fields": {
@@ -381,17 +382,15 @@ class AuthService:
             "has_x25519_public_key": bool(x.get("public_key")),
         }
 
+    def debug_storage_status(self) -> dict[str, Any]:
+        return self.storage.debug_storage()
+
     def _load_accounts(self) -> list[dict[str, Any]]:
-        try:
-            data = json.loads(self.accounts_path.read_text(encoding="utf-8"))
-        except Exception:
-            data = []
-        if not isinstance(data, list):
-            return []
-        return [row for row in data if isinstance(row, dict)]
+        rows = self.storage.list_accounts()
+        return [row for row in rows if isinstance(row, dict)]
 
     def _save_accounts(self, accounts: list[dict[str, Any]]) -> None:
-        self.accounts_path.write_text(json.dumps(accounts, indent=2), encoding="utf-8")
+        self.storage.replace_accounts(accounts)
 
     def _find_account(self, accounts: list[dict[str, Any]], email: str) -> dict[str, Any] | None:
         for account in accounts:

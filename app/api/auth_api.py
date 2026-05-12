@@ -193,3 +193,9 @@ def debug_user(email: str):
     status["accounts_path"] = str((DATA_DIR / "accounts.json").resolve())
     status["profiles_dir"] = str((DATA_DIR / "profiles").resolve())
     return status
+
+
+@router.get("/debug-storage")
+def debug_storage():
+    _log("GET /api/auth/debug-storage")
+    return service.debug_storage_status()

@@ -1,20 +1,27 @@
-﻿from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import json
 from pathlib import Path
+import os
 
 from app.services.protocol_service import ProtocolService
-from app.profiles.profile_service import ProfileService
 from app.services.connection_service import ConnectionService
+from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/api/conversation", tags=["conversation"])
 
 protocol = ProtocolService()
-profiles = ProfileService()
+DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+(DATA_DIR / "profiles").mkdir(parents=True, exist_ok=True)
+auth = AuthService(
+    accounts_path=str(DATA_DIR / "accounts.json"),
+    profiles_dir=str(DATA_DIR / "profiles"),
+)
 connections = ConnectionService(
-    connections_path="data/connections.json",
-    accounts_path="data/accounts.json",
-    profiles_dir="data/profiles",
+    connections_path=str(DATA_DIR / "connections.json"),
+    accounts_path=str(DATA_DIR / "accounts.json"),
+    profiles_dir=str(DATA_DIR / "profiles"),
 )
 
 
@@ -39,24 +46,12 @@ class EncryptFileRequest(BaseModel):
 
 
 def get_profile(username: str):
-    username = username.strip().lower()
-
-    for path in Path("data/profiles").glob("*.json"):
-        with path.open("r", encoding="utf-8") as f:
-            profile = json.load(f)
-
-        profile_username = ((profile.get("username") or profile.get("name") or "").strip().lower())
-
-        if profile_username == username:
-            if "username" not in profile and profile.get("name"):
-                profile["username"] = profile.get("name")
-
-            if "display_name" not in profile:
-                profile["display_name"] = profile.get("display_name") or profile.get("username") or profile.get("name")
-
-            return profile
-
-    raise HTTPException(status_code=404, detail=f"Profile not found: {username}")
+    normalized = username.strip().lower()
+    accounts = auth._load_accounts()
+    account = auth._find_account(accounts, normalized)
+    if not account:
+        raise HTTPException(status_code=404, detail=f"Profile not found: {normalized}")
+    return auth._ensure_profile_exists(normalized, str(account.get("display_name") or normalized))
 
 
 def profile_to_contact(profile: dict):
@@ -89,7 +84,7 @@ def _require_trusted(owner: str, peer: str) -> dict:
 
 @router.post("/encrypt")
 def encrypt_message(req: EncryptRequest):
-    trusted = _require_trusted(req.sender, req.recipient)
+    trusted = _require_trusted(req.sender.strip().lower(), req.recipient.strip().lower())
 
     sender_profile = get_profile(req.sender)
     recipient_profile = get_profile(req.recipient)
@@ -111,7 +106,7 @@ def encrypt_message(req: EncryptRequest):
             **(result.get("debug") or {}),
             "trusted_connection": True,
             "encryption_key_owner": trusted["peer_email"],
-            "signature_key_owner": req.sender,
+            "signature_key_owner": req.sender.strip().lower(),
             "x25519_fingerprint": trusted["x25519_fingerprint"],
             "ed25519_fingerprint": trusted["ed25519_fingerprint"],
             "algorithms": ["X25519", "HKDF-SHA256", "ChaCha20-Poly1305", "Ed25519"],
@@ -123,12 +118,10 @@ def encrypt_message(req: EncryptRequest):
 def encrypt_file(req: EncryptFileRequest):
     if not req.content_b64 or not isinstance(req.content_b64, str):
         raise HTTPException(status_code=400, detail="content_b64 must be a non-empty base64 string")
-
     if req.mime_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Unsupported mime_type; only application/pdf is allowed")
 
-    trusted = _require_trusted(req.sender, req.recipient)
-
+    trusted = _require_trusted(req.sender.strip().lower(), req.recipient.strip().lower())
     sender_profile = get_profile(req.sender)
     recipient_profile = get_profile(req.recipient)
     recipient_contact = profile_to_contact(recipient_profile)
@@ -137,7 +130,6 @@ def encrypt_file(req: EncryptFileRequest):
 
     try:
         import base64
-
         content_bytes = base64.b64decode(req.content_b64.encode("utf-8"), validate=True)
     except Exception:
         raise HTTPException(status_code=400, detail="content_b64 is not valid base64")
@@ -149,7 +141,6 @@ def encrypt_file(req: EncryptFileRequest):
         "content_b64": req.content_b64,
         "size": len(content_bytes),
     }
-
     plaintext = json.dumps(payload, ensure_ascii=False)
 
     result = protocol.send_message(
@@ -160,11 +151,9 @@ def encrypt_file(req: EncryptFileRequest):
     )
 
     envelope = result.get("envelope")
-
     try:
         ciphertext_b64 = envelope.get("ciphertext")
         from app.core.envelope import b64d
-
         ciphertext_size = len(b64d(ciphertext_b64))
     except Exception:
         ciphertext_size = None
@@ -175,26 +164,19 @@ def encrypt_file(req: EncryptFileRequest):
         "suite": ProtocolService.SUITE,
         "trusted_connection": True,
         "encryption_key_owner": trusted["peer_email"],
-        "signature_key_owner": req.sender,
+        "signature_key_owner": req.sender.strip().lower(),
         "x25519_fingerprint": trusted["x25519_fingerprint"],
         "ed25519_fingerprint": trusted["ed25519_fingerprint"],
         "algorithms": ["X25519", "HKDF-SHA256", "ChaCha20-Poly1305", "Ed25519"],
     }
-
     if result.get("debug"):
         debug.update({k: v for k, v in result["debug"].items() if k != "payload_key_b64"})
-
-    return {
-        "ok": True,
-        "envelope": envelope,
-        "debug": debug,
-    }
+    return {"ok": True, "envelope": envelope, "debug": debug}
 
 
 @router.post("/decrypt")
 def decrypt_message(req: DecryptRequest):
-    trusted = _require_trusted(req.receiver, req.sender)
-
+    trusted = _require_trusted(req.receiver.strip().lower(), req.sender.strip().lower())
     receiver_profile = get_profile(req.receiver)
     sender_profile = get_profile(req.sender)
     sender_contact = profile_to_contact(sender_profile)
@@ -209,7 +191,6 @@ def decrypt_message(req: DecryptRequest):
     )
 
     response = {"ok": True}
-
     if "plaintext" in result:
         txt = result["plaintext"]
         parsed = None
@@ -217,7 +198,6 @@ def decrypt_message(req: DecryptRequest):
             parsed = json.loads(txt)
         except Exception:
             parsed = None
-
         if isinstance(parsed, dict) and parsed.get("type") == "file":
             response["message"] = {
                 "type": "file",
@@ -236,11 +216,10 @@ def decrypt_message(req: DecryptRequest):
         response["debug"] = {
             **result["debug"],
             "trusted_connection": True,
-            "encryption_key_owner": req.receiver,
-            "signature_key_owner": req.sender,
+            "encryption_key_owner": req.receiver.strip().lower(),
+            "signature_key_owner": req.sender.strip().lower(),
             "x25519_fingerprint": trusted["x25519_fingerprint"],
             "ed25519_fingerprint": trusted["ed25519_fingerprint"],
             "algorithms": ["X25519", "HKDF-SHA256", "ChaCha20-Poly1305", "Ed25519"],
         }
-
     return response

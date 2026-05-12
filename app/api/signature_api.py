@@ -14,7 +14,6 @@ from pydantic import BaseModel
 from app.services.crypto_service import CryptoService
 from app.services.connection_service import ConnectionService
 from app.services.auth_service import AuthService
-from app.profiles.profile_service import ProfileService
 
 router = APIRouter(prefix="/api/signature", tags=["signature"])
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
@@ -31,7 +30,6 @@ connections = ConnectionService(
     profiles_dir=str(PROFILES_DIR),
 )
 auth = AuthService(accounts_path=str(ACCOUNTS_PATH), profiles_dir=str(PROFILES_DIR))
-profiles = ProfileService(profiles_dir=str(PROFILES_DIR))
 
 
 def _log(message: str) -> None:
@@ -79,7 +77,12 @@ def _resolve_account(identifier: str) -> dict[str, Any]:
             return account
     raise HTTPException(
         status_code=404,
-        detail="Account not found. Please register and verify this email first.",
+        detail={
+            "detail": "Account not found. Please register and verify this email first.",
+            "normalized_user": needle,
+            "account_exists": False,
+            "profile_exists": False,
+        },
     )
 
 
@@ -88,40 +91,8 @@ def _ensure_profile_for_account(account: dict[str, Any]) -> dict[str, Any]:
     if not email:
         raise HTTPException(status_code=400, detail="Signer account has no email.")
 
-    profile_id = str(account.get("profile_id") or "").strip()
-    if profile_id:
-        try:
-            profile = profiles.load_profile(profile_id)
-            _validate_signing_profile(profile)
-            return profile
-        except Exception:
-            pass
-
-    by_username = profiles.find_by_username(email)
-    if by_username:
-        _validate_signing_profile(by_username)
-        account["profile_id"] = by_username.get("profile_id")
-        accounts = auth._load_accounts()
-        for row in accounts:
-            if str(row.get("email") or "").strip().lower() == email:
-                row["profile_id"] = by_username.get("profile_id")
-                break
-        auth._save_accounts(accounts)
-        return by_username
-
-    profile = profiles.create_profile(
-        username=email,
-        display_name=str(account.get("display_name") or email),
-        save=True,
-    )
+    profile = auth._ensure_profile_exists(email, str(account.get("display_name") or email))
     _log(f"profile auto-created for account email={email}")
-    account["profile_id"] = profile.get("profile_id")
-    accounts = auth._load_accounts()
-    for row in accounts:
-        if str(row.get("email") or "").strip().lower() == email:
-            row["profile_id"] = profile.get("profile_id")
-            break
-    auth._save_accounts(accounts)
     _validate_signing_profile(profile)
     return profile
 
@@ -159,6 +130,8 @@ def sign_file(req: SignFileRequest):
         raise HTTPException(status_code=400, detail="Signer is required.")
     file_bytes = _decode_b64(req.content_b64)
     account = _resolve_account(signer)
+    if not bool(account.get("verified")):
+        raise HTTPException(status_code=403, detail="Account not verified. Please verify this email first.")
     profile = _ensure_profile_for_account(account)
     signer_public_key = CryptoService._get_ed25519_public_key_b64(profile)
     signer_private_key = CryptoService._get_ed25519_private_key_b64(profile)

@@ -13,6 +13,7 @@ from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
 from app.profiles.profile_service import ProfileService
 from app.services.crypto_service import CryptoService
+from app.services.storage_repository import StorageRepository
 
 
 class ConnectionService:
@@ -31,6 +32,7 @@ class ConnectionService:
         self.auth_service = AuthService(accounts_path=accounts_path, profiles_dir=profiles_dir)
         self.email_service = EmailService()
         self.profile_service = ProfileService(profiles_dir=profiles_dir)
+        self.storage = StorageRepository(data_dir=str(self.connections_path.parent))
 
         env = (os.getenv("APP_ENV") or os.getenv("ENV") or os.getenv("PYTHON_ENV") or "development").lower()
         self.is_development = env in {"dev", "development", "local", "test"}
@@ -249,10 +251,7 @@ class ConnectionService:
         raise ValueError("User not found")
 
     def _profile_for_email(self, email: str) -> dict[str, Any]:
-        profile = self.profile_service.find_by_username(email)
-        if not profile:
-            raise ValueError(f"Profile not found for {email}")
-        return profile
+        return self.auth_service._ensure_profile_exists(email.strip().lower(), email.strip().lower())
 
     def _refresh_key_snapshot(
         self,
@@ -286,16 +285,11 @@ class ConnectionService:
         return None
 
     def _load_connections(self) -> list[dict[str, Any]]:
-        try:
-            data = json.loads(self.connections_path.read_text(encoding="utf-8"))
-        except Exception:
-            data = []
-        if not isinstance(data, list):
-            return []
-        return [row for row in data if isinstance(row, dict)]
+        rows = self.storage.list_connections()
+        return [row for row in rows if isinstance(row, dict)]
 
     def _save_connections(self, rows: list[dict[str, Any]]) -> None:
-        self.connections_path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+        self.storage.replace_connections(rows)
 
     @staticmethod
     def _utc_now() -> str:
