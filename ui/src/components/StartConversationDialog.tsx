@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import GlobalModal from "@/components/ui/GlobalModal";
 
 type Props = {
   open: boolean;
@@ -57,27 +58,37 @@ export default function StartConversationDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40">
-      <div className="bg-zinc-900 w-[520px] max-w-[95vw] rounded-xl p-4 border border-zinc-700">
-        <div className="mb-3 flex items-center justify-between">
+    <GlobalModal
+      open={open}
+      onClose={onClose}
+      title="Connect With Another User"
+      size="lg"
+    >
+      <div className="w-full rounded-[2rem]">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
           <h2 className="text-lg font-semibold">Connect With Another User</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-zinc-600 px-2 py-1 text-xs hover:border-zinc-400"
+            className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs hover:bg-white/[0.08]"
           >
             X
           </button>
         </div>
 
-        <div className="rounded-lg border border-zinc-700 p-3 mb-4">
+        <div className="space-y-4 p-6">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-xs text-zinc-400">Manage trusted contacts and connection verification.</div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 mb-4">
           <div className="mb-2 text-xs text-zinc-300">Request connection</div>
           <input
             type="text"
             placeholder="Email or user_id"
             value={connectTo}
             onChange={(e) => setConnectTo(e.target.value)}
-            className="mb-2 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm"
+            className="mb-2 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
           />
           <button
             type="button"
@@ -90,7 +101,7 @@ export default function StartConversationDialog({
                 setIsSubmitting(false);
               }
             }}
-            className="w-full rounded border border-zinc-600 px-2 py-1 text-sm hover:border-zinc-400 disabled:opacity-50"
+            className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm hover:bg-white/[0.08] disabled:opacity-50"
           >
             Send connection request
           </button>
@@ -101,14 +112,14 @@ export default function StartConversationDialog({
             placeholder="Connection ID"
             value={connectionId}
             onChange={(e) => setConnectionId(e.target.value)}
-            className="mb-2 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm"
+            className="mb-2 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
           />
           <input
             type="text"
             placeholder="Email verification code"
             value={verifyCode}
             onChange={(e) => setVerifyCode(e.target.value)}
-            className="mb-2 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm"
+            className="mb-2 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
           />
           <button
             type="button"
@@ -124,7 +135,7 @@ export default function StartConversationDialog({
                 setIsSubmitting(false);
               }
             }}
-            className="w-full rounded border border-zinc-600 px-2 py-1 text-sm hover:border-zinc-400 disabled:opacity-50"
+            className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm hover:bg-white/[0.08] disabled:opacity-50"
           >
             Verify connection
           </button>
@@ -143,7 +154,7 @@ export default function StartConversationDialog({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search trusted contacts..."
-          className="w-full p-2 rounded bg-zinc-800 mb-4"
+          className="mb-4 w-full rounded-xl border border-white/10 bg-white/[0.04] p-2.5"
         />
 
         <div className="space-y-2 max-h-[300px] overflow-y-auto">
@@ -154,7 +165,7 @@ export default function StartConversationDialog({
                 onCreate(contact);
                 onClose();
               }}
-              className="w-full text-left p-3 rounded bg-zinc-800 hover:bg-zinc-700"
+              className="w-full rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left hover:bg-white/[0.08]"
             >
               <div>{contact.name}</div>
               <div className="text-xs text-zinc-400">{contact.peerId}</div>
@@ -165,12 +176,13 @@ export default function StartConversationDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-zinc-600 px-3 py-1 text-sm hover:border-zinc-400"
+            className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm hover:bg-white/[0.08]"
           >
             Cancel
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </GlobalModal>
   );
 }

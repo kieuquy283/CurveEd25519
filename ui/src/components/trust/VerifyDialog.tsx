@@ -4,6 +4,7 @@ import { useTrustStore } from "@/store/useTrustStore";
 import FingerprintCard from "./FingerprintCard";
 import SafetyNumber from "./SafetyNumber";
 import { copyToClipboard } from "@/services/trust";
+import GlobalModal from "@/components/ui/GlobalModal";
 
 export default function VerifyDialog({ peerId, onClose }: { peerId: string; onClose: () => void }) {
   const entry = useTrustStore((s) => s.getEntry(peerId));
@@ -12,8 +13,8 @@ export default function VerifyDialog({ peerId, onClose }: { peerId: string; onCl
   const fp = entry?.fingerprint ?? "";
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/60">
-      <div className="bg-slate-900 p-4 rounded-md w-full max-w-lg">
+    <GlobalModal open onClose={onClose} title="Verify Identity" size="lg">
+      <div className="w-full p-6">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Verify Identity</h3>
           <button onClick={onClose} className="text-slate-400">Close</button>
@@ -29,6 +30,6 @@ export default function VerifyDialog({ peerId, onClose }: { peerId: string; onCl
           </div>
         </div>
       </div>
-    </div>
+    </GlobalModal>
   );
 }

@@ -2272,3 +2272,45 @@ Details:
 Build result:
 - Ran in `ui/`: `npm run build`
 - Result: success (Next.js 16.2.6, TypeScript passed, static pages generated).
+
+## 2026-05-13 - Global Centered Modals (Portal Fix)
+
+Status: DONE
+
+Issue fixed:
+- Connection and signature dialogs were rendered in sidebar tree, making overlays appear constrained to sidebar area.
+- Backdrop dimming did not reliably cover the full app viewport in those cases.
+
+What changed:
+- Added a reusable portal-based modal shell:
+  - `ui/src/components/ui/GlobalModal.tsx`
+  - Renders to `document.body` via `createPortal`
+  - Full-viewport centered modal + full-screen backdrop
+  - Escape key close, optional backdrop close, and click propagation stop
+  - Accessible dialog semantics (`role="dialog"`, `aria-modal`, labelled/description ids)
+- Migrated dialogs to use `GlobalModal` (logic unchanged):
+  - `ui/src/components/StartConversationDialog.tsx`
+  - `ui/src/components/signature/SignatureDialog.tsx`
+  - `ui/src/components/settings/SettingsDialog.tsx`
+- Also aligned legacy modal components to global modal behavior for future consistency:
+  - `ui/src/components/contacts/AddContactDialog.tsx`
+  - `ui/src/components/trust/VerifyDialog.tsx`
+
+Preserved behavior:
+- Connection request + verify flow unchanged.
+- Trusted contacts behavior unchanged.
+- File signing and signed file list/download flow unchanged.
+- Settings data flow unchanged.
+- No changes to auth, websocket protocol, encryption/signature payload formats, or backend services.
+
+Build result:
+- Ran in `ui/`: `npm run build`
+- Result: success (Next.js 16.2.6, TypeScript passed, static pages generated).
+
+Manual tests to run in browser:
+1. Open Add/Connect dialog from sidebar and confirm it is centered across the full app with full-screen dim backdrop.
+2. Close via X, backdrop click, and Escape.
+3. Send and verify connection still work.
+4. Open Signature dialog and confirm centered full-app modal; sign/download paths still work.
+5. Open Settings dialog and confirm centered full-app modal behavior.
+6. Check mobile width: modal remains within viewport and scrolls internally.
