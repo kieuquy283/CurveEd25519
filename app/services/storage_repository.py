@@ -431,6 +431,49 @@ class StorageRepository:
         rows.sort(key=lambda x: str(x.get("created_at") or ""))
         return rows[-limit:]
 
+    def patch_conversation_metadata(self, conversation_id: str, user_email: str, metadata_patch: dict[str, Any]) -> dict[str, Any] | None:
+        user = self._norm_email(user_email)
+        if self.is_supabase():
+            conv_rows = list(self._supabase.table("app_conversations").select("*").eq("id", conversation_id).limit(1).execute().data or [])
+            if not conv_rows:
+                return None
+            conv = dict(conv_rows[0])
+            members = {
+                self._norm_email(str(conv.get("user_a_email") or "")),
+                self._norm_email(str(conv.get("user_b_email") or "")),
+            }
+            if user not in members:
+                return None
+            current_meta = conv.get("metadata")
+            meta = dict(current_meta) if isinstance(current_meta, dict) else {}
+            meta.update(metadata_patch)
+            try:
+                self._supabase.table("app_conversations").update({"metadata": meta, "updated_at": self._now_iso()}).eq("id", conversation_id).execute()
+            except Exception:
+                return None
+            conv["metadata"] = meta
+            return conv
+
+        rows = self._read_rows(self.conversations_path)
+        for i, row in enumerate(rows):
+            if str(row.get("id") or "") != conversation_id:
+                continue
+            members = {
+                self._norm_email(str(row.get("user_a_email") or "")),
+                self._norm_email(str(row.get("user_b_email") or "")),
+            }
+            if user not in members:
+                return None
+            current_meta = row.get("metadata")
+            meta = dict(current_meta) if isinstance(current_meta, dict) else {}
+            meta.update(metadata_patch)
+            row["metadata"] = meta
+            row["updated_at"] = self._now_iso()
+            rows[i] = row
+            self._write_rows(self.conversations_path, rows)
+            return row
+        return None
+
     # Notifications
     def create_notification(self, notif: dict[str, Any]) -> dict[str, Any]:
         record = dict(notif)

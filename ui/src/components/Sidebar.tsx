@@ -30,6 +30,7 @@ import { useContactStore } from "@/store/useContactStore";
 import { listConversations, listConversationMessages } from "@/services/conversations";
 import { listNotifications, markNotificationRead } from "@/services/notifications";
 import { useNotificationStore } from "@/store/useNotificationStore";
+import { getNickname } from "@/lib/conversationNicknames";
 
 interface SidebarProps {
   onSelectConversation?: () => void;
@@ -128,7 +129,18 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
           const b = String(row.user_b_email || "");
           const me = String(userId).toLowerCase();
           const peer = String(row.peer_email || (a.toLowerCase() === me ? b : a));
-          const peerName = String(row.peer_display_name || peer);
+          const metadata = (row.metadata && typeof row.metadata === "object")
+            ? (row.metadata as Record<string, unknown>)
+            : {};
+          const nicknameMap = (metadata.nicknames && typeof metadata.nicknames === "object")
+            ? (metadata.nicknames as Record<string, unknown>)
+            : {};
+          const byUser = (nicknameMap[me] && typeof nicknameMap[me] === "object")
+            ? (nicknameMap[me] as Record<string, unknown>)
+            : {};
+          const serverNickname = String(byUser[String(peer).toLowerCase()] || "");
+          const localNickname = getNickname(userId, peer) || "";
+          const peerName = localNickname || serverNickname || String(row.peer_display_name || peer);
           if (!peer) continue;
           addConversation({
             id: String(row.id || `${me}:${peer}`),

@@ -42,3 +42,18 @@ export async function saveConversationMessage(
   });
   return parseOrThrow(response) as Promise<{ ok: boolean; conversation_id: string; message: Record<string, unknown> }>;
 }
+
+export async function patchConversationMetadata(
+  conversationId: string,
+  payload: {
+    user: string;
+    metadata_patch: Record<string, unknown>;
+  }
+) {
+  const response = await fetch(`${getApiBaseUrl()}/api/conversations/${encodeURIComponent(conversationId)}/metadata`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseOrThrow(response) as Promise<{ ok: boolean; conversation_id: string; metadata: Record<string, unknown> }>;
+}

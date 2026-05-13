@@ -13,13 +13,16 @@ import { useTypingStore } from "@/store/useTypingStore";
 interface MessageListProps {
   messages: ChatMessage[];
   conversationId: string;
+  highlightedMessageId?: string | null;
 }
 
 export function MessageList({
   messages,
-  conversationId: _conversationId,
+  conversationId,
+  highlightedMessageId,
 }: MessageListProps) {
   const scrollEndRef = useRef<HTMLDivElement>(null);
+  void conversationId;
 
   const typingPeersMap = useTypingStore((s) => s.typingPeers);
 
@@ -48,16 +51,21 @@ export function MessageList({
       ) : (
         <>
           {messages.map((message, idx) => (
-            <MessageBubble
+            <div
               key={message.id}
-              message={message}
-              isFirstInGroup={
-                idx === 0 || messages[idx - 1]?.from !== message.from
-              }
-              isLastInGroup={
-                idx === messages.length - 1 || messages[idx + 1]?.from !== message.from
-              }
-            />
+              id={`msg-${message.id}`}
+              className={highlightedMessageId === message.id ? "rounded-lg ring-1 ring-blue-500/60 ring-offset-0" : ""}
+            >
+              <MessageBubble
+                message={message}
+                isFirstInGroup={
+                  idx === 0 || messages[idx - 1]?.from !== message.from
+                }
+                isLastInGroup={
+                  idx === messages.length - 1 || messages[idx + 1]?.from !== message.from
+                }
+              />
+            </div>
           ))}
           {typingPeers.length > 0 && (
             <TypingIndicator peers={typingPeers} />

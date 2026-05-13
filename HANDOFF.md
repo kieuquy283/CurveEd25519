@@ -1955,3 +1955,64 @@ Recommended columns/indexes are aligned with:
 - Some secondary/non-critical UI strings remain English by design (not protocol-affecting).
 - Notification delivery is still poll-based fallback where WS push is not fully adopted.
 - Account deletion performs best-effort cleanup; schema/foreign-key policies may require additional DB-side constraints for strict cascade behavior.
+
+## TASK-INFO-PANEL-001 - Messenger-like conversation info side panel
+
+Status: DONE (frontend build + backend compile verified)
+
+Summary:
+
+- Added toggleable right-side conversation info panel from chat header info button.
+- Panel does not replace chat; on desktop it resizes chat area with a right column, on mobile it slides in as an overlay.
+- Added collapsible sections:
+  - `Thong tin ve doan chat`
+  - `Tuy chinh doan chat`
+  - `File phuong tien va file`
+- Added quick actions:
+  - `Tim kiem` in current conversation messages only
+  - `File` list from current conversation attachments only
+  - `Chinh sua biet danh`
+- Added local nickname persistence and optional backend metadata patch (`nicknames` only).
+- Added message highlight/scroll behavior for search results.
+
+Frontend files changed:
+
+- `ui/src/components/ChatArea.tsx`
+- `ui/src/components/ChatHeader.tsx`
+- `ui/src/components/MessageList.tsx`
+- `ui/src/components/conversation/ConversationInfoPanel.tsx` (new)
+- `ui/src/services/conversations.ts`
+- `ui/src/components/Sidebar.tsx`
+- `ui/src/lib/conversationNicknames.ts` (new)
+
+Backend files changed:
+
+- `app/api/chat_history_api.py`
+- `app/services/storage_repository.py`
+
+Backend endpoint added:
+
+- `PATCH /api/conversations/{conversation_id}/metadata`
+- Request:
+  - `{ "user": string, "metadata_patch": { ... } }`
+- Guardrails:
+  - user must belong to conversation
+  - only `nicknames` patch is allowed
+
+Checks run:
+
+- `cd ui && npm run build` OK
+- `D:\KieuQuy\Documents\DS\python.exe -m compileall app server.py` OK
+
+Manual test checklist:
+
+1. Login and open any conversation.
+2. Click header info icon; right panel appears.
+3. Click info icon again; panel hides.
+4. Open panel, use search; confirm only active-conversation results are shown.
+5. Click a search result; message scrolls into view and highlights.
+6. Open files section; confirm only active-conversation files are listed.
+7. Click an available file item; existing open/download behavior is reused.
+8. Edit nickname; confirm chat header/sidebar display updated name.
+9. Switch conversation; panel content updates to the active conversation safely.
+10. Reload page; app remains stable and no crash.

@@ -1,13 +1,17 @@
 "use client";
 
-import React from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useChatStore } from "@/store/useChatStore";
+import { useAuthStore } from "@/store/useAuthStore";
 
 import { MessageList } from "@/components/MessageList";
 import { MessageComposer } from "@/components/MessageComposer";
 import { ChatHeader } from "@/components/ChatHeader";
 import { ChatMessage } from "@/types/models";
+import { ConversationInfoPanel } from "@/components/conversation/ConversationInfoPanel";
+import { patchConversationMetadata } from "@/services/conversations";
+import { getNickname, setNickname } from "@/lib/conversationNicknames";
 
 interface ChatAreaProps {
   conversationId: string;
@@ -19,9 +23,13 @@ export function ChatArea({
   conversationId,
   onBack,
 }: ChatAreaProps) {
+  const [infoPanelOpen, setInfoPanelOpen] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const conversations = useChatStore(
     (s) => s.conversations
   );
+  const updateConversation = useChatStore((s) => s.updateConversation);
+  const currentUser = useAuthStore((s) => s.currentUser);
 
   const activeConversation =
     conversations.get(conversationId);
@@ -29,6 +37,44 @@ export function ChatArea({
   const messages = useChatStore((s) =>
     s.messages.get(conversationId) ?? EMPTY_MESSAGES
   );
+
+  useEffect(() => {
+    if (!activeConversation || !currentUser?.email) return;
+    const nick = getNickname(currentUser.email, activeConversation.peerId);
+    if (nick && nick !== activeConversation.peerName) {
+      updateConversation(activeConversation.id, { peerName: nick });
+    }
+  }, [activeConversation, currentUser?.email, updateConversation]);
+
+  const attachments = useMemo(() => {
+    return messages.flatMap((m) => {
+      const direct = (m.attachments || []).map((a) => ({
+        id: `${m.id}-${a.id}`,
+        name: a.fileName,
+        type: a.mimeType,
+        size: a.size || 0,
+        timestamp: m.timestamp,
+        disabled: !(a.url || a.content_b64 || a.dataBase64),
+        onOpen: () => {
+          if (a.url) window.open(a.url, "_blank", "noopener,noreferrer");
+        },
+      }));
+      const fromFile = m.file
+        ? [{
+            id: `${m.id}-file`,
+            name: m.file.fileName || m.file.filename || "attachment",
+            type: m.file.mimeType || m.file.mime_type || "application/octet-stream",
+            size: m.file.size || 0,
+            timestamp: m.timestamp,
+            disabled: !(m.file.url || m.file.content_b64 || m.file.dataBase64),
+            onOpen: () => {
+              if (m.file?.url) window.open(m.file.url, "_blank", "noopener,noreferrer");
+            },
+          }]
+        : [];
+      return [...direct, ...fromFile];
+    });
+  }, [messages]);
 
   if (!activeConversation) {
     return (
@@ -39,23 +85,103 @@ export function ChatArea({
   }
 
   return (
-    <div className="flex h-full flex-col bg-black">
-      {/* Header */}
-      <ChatHeader
-        conversation={activeConversation}
-        onBack={onBack}
-      />
+    <div className="flex h-full min-w-0 bg-black">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <ChatHeader
+          conversation={activeConversation}
+          onBack={onBack}
+          infoPanelOpen={infoPanelOpen}
+          onToggleInfoPanel={() => setInfoPanelOpen((v) => !v)}
+        />
 
-      {/* Messages */}
-      <MessageList
-        messages={messages}
-        conversationId={conversationId}
-      />
+        <MessageList
+          messages={messages}
+          conversationId={conversationId}
+          highlightedMessageId={highlightedMessageId}
+        />
 
-      {/* Composer */}
-      <MessageComposer
-        conversationId={conversationId}
-      />
+        <MessageComposer
+          conversationId={conversationId}
+        />
+      </div>
+
+      {infoPanelOpen && (
+        <>
+          <div className="hidden md:block">
+            <ConversationInfoPanel
+              conversation={activeConversation}
+              currentUser={currentUser}
+              peer={{ email: activeConversation.peerId, displayName: activeConversation.peerName }}
+              messages={messages}
+              attachments={attachments}
+              onSearch={() => {}}
+              onSearchResultClick={(messageId) => {
+                setHighlightedMessageId(messageId);
+                const el = document.getElementById(`msg-${messageId}`);
+                el?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+              onEditNickname={async (nickname) => {
+                const name = nickname || activeConversation.peerId;
+                updateConversation(activeConversation.id, { peerName: name });
+                if (currentUser?.email) {
+                  setNickname(currentUser.email, activeConversation.peerId, name);
+                  try {
+                    await patchConversationMetadata(activeConversation.id, {
+                      user: currentUser.email,
+                      metadata_patch: {
+                        nicknames: {
+                          [currentUser.email.toLowerCase()]: {
+                            [activeConversation.peerId.toLowerCase()]: name,
+                          },
+                        },
+                      },
+                    });
+                  } catch {
+                    // local nickname is already persisted
+                  }
+                }
+              }}
+            />
+          </div>
+          <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setInfoPanelOpen(false)} aria-hidden />
+          <div className="fixed inset-y-0 right-0 z-50 w-[92vw] max-w-[380px] md:hidden">
+            <ConversationInfoPanel
+              conversation={activeConversation}
+              currentUser={currentUser}
+              peer={{ email: activeConversation.peerId, displayName: activeConversation.peerName }}
+              messages={messages}
+              attachments={attachments}
+              onSearch={() => {}}
+              onSearchResultClick={(messageId) => {
+                setHighlightedMessageId(messageId);
+                const el = document.getElementById(`msg-${messageId}`);
+                el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                setInfoPanelOpen(false);
+              }}
+              onEditNickname={async (nickname) => {
+                const name = nickname || activeConversation.peerId;
+                updateConversation(activeConversation.id, { peerName: name });
+                if (currentUser?.email) {
+                  setNickname(currentUser.email, activeConversation.peerId, name);
+                  try {
+                    await patchConversationMetadata(activeConversation.id, {
+                      user: currentUser.email,
+                      metadata_patch: {
+                        nicknames: {
+                          [currentUser.email.toLowerCase()]: {
+                            [activeConversation.peerId.toLowerCase()]: name,
+                          },
+                        },
+                      },
+                    });
+                  } catch {}
+                }
+              }}
+              onClose={() => setInfoPanelOpen(false)}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

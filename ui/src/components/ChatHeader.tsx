@@ -13,11 +13,15 @@ import { Conversation } from "@/types/models";
 interface ChatHeaderProps {
   conversation: Conversation;
   onBack?: () => void;
+  infoPanelOpen?: boolean;
+  onToggleInfoPanel?: () => void;
 }
 
 export function ChatHeader({
   conversation,
   onBack,
+  infoPanelOpen = false,
+  onToggleInfoPanel,
 }: ChatHeaderProps) {
   const displayName =
     conversation.peerName ||
@@ -72,8 +76,11 @@ export function ChatHeader({
       {/* Right */}
       <div className="flex items-center gap-2">
         <button
+          type="button"
+          onClick={onToggleInfoPanel}
           className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
           aria-label="Conversation info"
+          aria-pressed={infoPanelOpen}
         >
           <Info size={20} />
         </button>

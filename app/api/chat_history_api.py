@@ -33,6 +33,10 @@ class SaveMessageBody(BaseModel):
     status: str | None = None
     connection_id: str | None = None
 
+class PatchConversationMetadataBody(BaseModel):
+    user: str
+    metadata_patch: dict[str, Any]
+
 
 @router.get("")
 def list_conversations(user: str = Query(...)):
@@ -140,3 +144,20 @@ def save_message(conversation_id: str, body: SaveMessageBody):
         pass
 
     return {"ok": True, "conversation_id": conversation_id, "message": saved}
+
+
+@router.patch("/{conversation_id}/metadata")
+def patch_conversation_metadata(conversation_id: str, body: PatchConversationMetadataBody):
+    user = _norm(body.user)
+    patch = body.metadata_patch or {}
+    if "nicknames" not in patch:
+        return {"ok": False, "error": "only_nicknames_patch_allowed"}
+    safe_patch = {"nicknames": patch.get("nicknames")}
+    updated = storage.patch_conversation_metadata(conversation_id, user, safe_patch)
+    if not updated:
+        return {"ok": False, "error": "conversation_not_found_or_forbidden"}
+    return {
+        "ok": True,
+        "conversation_id": conversation_id,
+        "metadata": (updated.get("metadata") if isinstance(updated, dict) else {}) or {},
+    }
