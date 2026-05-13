@@ -2248,3 +2248,27 @@ Manual tests performed:
 Known limitations:
 - Sidebar filter tabs (`All/Unread/Groups/Contacts`) are currently visual-only because no existing filter state/logic was present in the active component path.
 - Full runtime manual scenario validation (login/send/verify/socket/mobile) is still recommended in browser.
+
+## 2026-05-13 - Auth Card Vertical Alignment Fix
+
+Status: DONE
+
+Issue fixed:
+- Auth/login card in right column appeared visually too low compared to the left hero section on desktop.
+
+What changed:
+- Updated auth shell layout spacing/alignment so the auth card sits higher on desktop and remains centered/usable on mobile.
+- Kept auth logic, handlers, APIs, and stores unchanged.
+
+Files changed:
+- `ui/src/components/auth/AuthShell.tsx`
+
+Details:
+- `main` container mobile spacing adjusted to `px-4 py-6` with `sm:px-6 sm:py-8`.
+- Right auth column wrapper changed to:
+  - mobile/tablet: centered (`items-center justify-center`)
+  - desktop: top-aligned with controlled offset (`lg:items-start lg:pt-[22vh]`)
+
+Build result:
+- Ran in `ui/`: `npm run build`
+- Result: success (Next.js 16.2.6, TypeScript passed, static pages generated).

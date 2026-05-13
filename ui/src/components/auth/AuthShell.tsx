@@ -16,11 +16,10 @@ export default function AuthShell({
         <div className="auth-glow-orb absolute -bottom-24 right-[-5rem] h-96 w-96 rounded-full bg-indigo-500/30 blur-3xl [animation-delay:2s]" />
       </div>
 
-      <main className="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 gap-8 px-6 py-8 lg:grid-cols-[1.1fr_0.9fr] lg:px-10">
+      <main className="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 gap-8 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[1.1fr_0.9fr] lg:px-10">
         <AuthHero />
-        <section className="flex items-center justify-center">{children}</section>
+        <section className="flex items-center justify-center py-2 lg:items-start lg:pt-[22vh]">{children}</section>
       </main>
     </div>
   );
 }
-
