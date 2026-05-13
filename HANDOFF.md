@@ -2016,3 +2016,45 @@ Manual test checklist:
 8. Edit nickname; confirm chat header/sidebar display updated name.
 9. Switch conversation; panel content updates to the active conversation safely.
 10. Reload page; app remains stable and no crash.
+
+## TASK-AUTH-UI-REDESIGN-001 - Modern login/sign up experience
+
+Status: DONE (frontend build verified)
+
+Summary:
+- Redesigned auth screen into a modern two-column secure-messaging layout.
+- Desktop: left hero panel + right auth card.
+- Mobile: stacked layout with hero above auth card.
+- Preserved all existing auth logic and API/store flows:
+  - login
+  - register
+  - verify email
+  - forgot password
+  - reset password
+- Added password visibility toggles and improved Vietnamese microcopy.
+
+Files changed:
+- `ui/src/components/auth/AuthScreen.tsx`
+  - Rebuilt auth UI shell, modern card layout, segmented login/register switch.
+  - Kept mode/state transitions and existing auth actions unchanged.
+  - Improved form hierarchy, labels, helper/status messages, and CTA styling.
+  - Added show/hide password controls for password fields.
+- `ui/src/components/auth/AuthHero.tsx` (new)
+  - Added premium hero section with slogan, trust bullets, and secure-tech visual cards.
+
+Design highlights:
+- Dark premium surface with layered radial/mesh-like glows.
+- Glass/elevated auth card with subtle border and blur.
+- Trust-focused copy for encrypted chat, signed files, and verified connections.
+- Responsive spacing and typography tuned for desktop/mobile.
+
+Checks run:
+- `cd ui && npm run build` OK
+
+Manual verification note:
+- Business logic was preserved in code paths; interactive runtime checks for each flow should be done in browser:
+  1. Login
+  2. Sign up
+  3. Verify email (including resend)
+  4. Forgot password
+  5. Reset password
