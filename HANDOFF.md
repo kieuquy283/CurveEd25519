@@ -2654,3 +2654,28 @@ Build/test:
 Resulting behavior:
 - If `app_connections.status=verified` (symmetric pair) and profiles/keys exist, send text/file/signed-file proceeds directly.
 - Verify modal appears only for missing/pending/new-user connection scenarios.
+
+## 2026-05-13 - Signature Verification Result Overlay
+
+Status: DONE
+
+Implemented:
+- Added centered verification result overlay across full viewport (portal to `document.body`):
+  - Green state: `Verified` / `Chữ ký hợp lệ`
+  - Red state: `Not verified` / `Chữ ký không hợp lệ`
+- Overlay auto-hides after ~1.5s and does not block interaction (`pointer-events-none`).
+- Persistent verification result UI remains unchanged in existing panels.
+
+Integrated flows:
+- Verify signed file from chat attachment preview.
+- Verify uploaded signed container from composer (`Xác minh chữ ký`).
+- Error/network verify failure now shows failed overlay message: `Không thể xác minh chữ ký`.
+
+Files changed:
+- `ui/src/components/ui/VerificationResultOverlay.tsx` (new)
+- `ui/src/hooks/useVerificationOverlay.ts` (new)
+- `ui/src/components/attachments/AttachmentPreview.tsx`
+- `ui/src/components/MessageComposer.tsx`
+
+Build result:
+- Frontend: `cd ui && npm run build` -> success.

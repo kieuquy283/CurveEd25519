@@ -16,6 +16,8 @@ import {
 import { buildApiBaseCandidates } from "@/config/env";
 import { ChatMessage, SignedFileContainer, VerificationResult } from "@/types/models";
 import { ConnectionStatusResponse } from "@/services/connections";
+import VerificationResultOverlay from "@/components/ui/VerificationResultOverlay";
+import { useVerificationOverlay } from "@/hooks/useVerificationOverlay";
 
 import { buildPacketId, buildTimestamp, PacketType } from "@/types/packets";
 
@@ -88,6 +90,7 @@ export function MessageComposer({
   const [verifyResult, setVerifyResult] = useState<VerificationResult | null>(null);
   const [verifiedContainer, setVerifiedContainer] = useState<SignedFileContainer | null>(null);
   const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
+  const { overlay, showVerified, showFailed } = useVerificationOverlay();
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -220,6 +223,11 @@ export function MessageComposer({
       });
       setVerifyResult(result);
       setVerifiedContainer(container);
+      if (result.valid) {
+        showVerified();
+      } else {
+        showFailed(result.message || "Chữ ký không hợp lệ");
+      }
     } catch (error) {
       console.error("[Composer] Verify signed file failed:", error);
       setVerifyResult({
@@ -232,10 +240,11 @@ export function MessageComposer({
           signer: "unknown",
         },
       });
+      showFailed("Không thể xác minh chữ ký");
     } finally {
       setVerifying(false);
     }
-  }, []);
+  }, [showFailed, showVerified]);
 
   const clearFile = useCallback(() => {
     if (!sending) setPendingFile(null);
@@ -395,6 +404,12 @@ export function MessageComposer({
 
   return (
     <div className="border-t border-white/10 bg-slate-950/70 p-4 backdrop-blur-xl">
+      <VerificationResultOverlay
+        open={overlay.open}
+        status={overlay.status}
+        title={overlay.title}
+        message={overlay.message}
+      />
       {pendingFile && (
         <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
           <div className="min-w-0">

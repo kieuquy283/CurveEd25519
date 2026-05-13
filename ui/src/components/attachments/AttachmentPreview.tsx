@@ -10,6 +10,8 @@ import {
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { logAuditEvent } from "@/services/audit";
+import VerificationResultOverlay from "@/components/ui/VerificationResultOverlay";
+import { useVerificationOverlay } from "@/hooks/useVerificationOverlay";
 
 export default function AttachmentPreview({
   attachment,
@@ -26,6 +28,7 @@ export default function AttachmentPreview({
   const [verifyResultFor, setVerifyResultFor] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const verificationStartedRef = useRef<string | null>(null);
+  const { overlay, showVerified, showFailed } = useVerificationOverlay();
 
   const currentUserEmail = useAuthStore((s) => s.currentUser?.email);
   const prefs = useSettingsStore((s) => s.prefs);
@@ -53,6 +56,11 @@ export default function AttachmentPreview({
       );
       setVerifyResult(result);
       setVerifyResultFor(attachment.id);
+      if (result.valid) {
+        showVerified();
+      } else {
+        showFailed(result.message || "Chữ ký không hợp lệ");
+      }
     } catch (err) {
       setVerifyResult({
         ok: false,
@@ -60,10 +68,11 @@ export default function AttachmentPreview({
         message: err instanceof Error ? err.message : "Xác minh thất bại.",
       });
       setVerifyResultFor(attachment.id);
+      showFailed("Không thể xác minh chữ ký");
     } finally {
       setVerifying(false);
     }
-  }, [signedContainer, currentUserEmail, verifying, attachment.id]);
+  }, [signedContainer, currentUserEmail, verifying, attachment.id, showFailed, showVerified]);
 
   useEffect(() => {
     if (
@@ -114,6 +123,12 @@ export default function AttachmentPreview({
 
   return (
     <div className="p-2">
+      <VerificationResultOverlay
+        open={overlay.open}
+        status={overlay.status}
+        title={overlay.title}
+        message={overlay.message}
+      />
       {isImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt={attachment.fileName} className="max-h-40 rounded-md" />
