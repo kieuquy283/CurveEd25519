@@ -85,14 +85,18 @@ export function ChatArea({
   }
 
   return (
-    <div className="flex h-full min-w-0 bg-black">
-      <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex h-full min-w-0 gap-3 lg:gap-4">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950/45 backdrop-blur-xl">
         <ChatHeader
           conversation={activeConversation}
           onBack={onBack}
           infoPanelOpen={infoPanelOpen}
           onToggleInfoPanel={() => setInfoPanelOpen((v) => !v)}
         />
+
+        <div className="mx-auto mt-4 max-w-md rounded-3xl border border-violet-400/20 bg-violet-500/10 px-5 py-3 text-center text-sm text-zinc-300 shadow-[0_0_40px_rgba(124,58,237,0.18)] backdrop-blur">
+          Tin nhắn được mã hóa đầu cuối
+        </div>
 
         <MessageList
           messages={messages}
@@ -143,7 +147,7 @@ export function ChatArea({
               }}
             />
           </div>
-          <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setInfoPanelOpen(false)} aria-hidden />
+          <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setInfoPanelOpen(false)} aria-hidden />
           <div className="fixed inset-y-0 right-0 z-50 w-[92vw] max-w-[380px] md:hidden">
             <ConversationInfoPanel
               conversation={activeConversation}

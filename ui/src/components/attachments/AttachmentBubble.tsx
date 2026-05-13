@@ -53,7 +53,7 @@ export default function AttachmentBubble({ message }: { message: ChatMessage }) 
         if (!a) return null;
         const progress = useAttachmentStore.getState().uploadProgress.get(a.id) ?? (a.uploaded ? 100 : 0);
         return (
-          <div key={a.id} className="bg-slate-800 rounded-md p-2">
+          <div key={a.id} className="rounded-2xl border border-white/10 bg-slate-900/70 p-2 transition hover:bg-slate-900">
             <AttachmentPreview attachment={a} />
             {progress < 100 && <div className="mt-2"><UploadProgress progress={progress} /></div>}
           </div>

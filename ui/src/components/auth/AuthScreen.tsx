@@ -4,7 +4,8 @@ import React, { useMemo, useState } from "react";
 import { Eye, EyeOff, KeyRound, MailCheck, Shield, UserPlus } from "lucide-react";
 import { resendVerificationCode } from "@/services/auth";
 import { useAuthStore } from "@/store/useAuthStore";
-import AuthHero from "@/components/auth/AuthHero";
+import AuthShell from "@/components/auth/AuthShell";
+import AuthCard from "@/components/auth/AuthCard";
 
 type AuthMode = "login" | "register" | "verify" | "forgot" | "reset";
 
@@ -116,179 +117,224 @@ export default function AuthScreen() {
     } catch {}
   };
 
-  const title = mode === "login" ? "Đăng nhập" : mode === "register" ? "Đăng ký" : mode === "verify" ? "Xác minh email" : mode === "forgot" ? "Quên mật khẩu" : "Đặt lại mật khẩu";
+  const title =
+    mode === "login"
+      ? "Welcome back"
+      : mode === "register"
+        ? "Create secure account"
+        : mode === "verify"
+          ? "Verify your email"
+          : mode === "forgot"
+            ? "Reset access"
+            : "Set new password";
+
   const subtitle =
     mode === "login"
-      ? "Tiếp tục cuộc trò chuyện an toàn của bạn."
+      ? "Log in to continue your secure conversations."
       : mode === "register"
-        ? "Tạo tài khoản để bắt đầu nhắn tin bảo mật."
+        ? "Start encrypted conversations with verified identity."
         : mode === "verify"
-          ? "Mã xác minh đã được gửi đến email của bạn."
+          ? "Enter the code we sent to your inbox."
           : mode === "forgot"
-            ? "Nhập email để nhận mã đặt lại mật khẩu."
-            : "Đặt mật khẩu mới để tiếp tục sử dụng tài khoản.";
+            ? "We will send a verification code to your email."
+            : "Choose a strong password to protect your account.";
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_82%_4%,rgba(139,92,246,0.16),transparent_32%),radial-gradient(circle_at_75%_80%,rgba(59,130,246,0.12),transparent_30%)]" />
-      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 md:grid md:grid-cols-2 md:gap-8 md:px-8 md:py-10">
-        <AuthHero />
+    <AuthShell>
+      <AuthCard>
+        <div className="mb-5">
+          <h2 className="text-2xl font-semibold text-white">{title}</h2>
+          <p className="mt-1 text-sm text-zinc-300">{subtitle}</p>
+        </div>
 
-        <section className="flex items-center justify-center">
-          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/40 backdrop-blur-xl md:p-7">
-            <div className="mb-5">
-              <h2 className="text-2xl font-semibold text-white">{title}</h2>
-              <p className="mt-1 text-sm text-slate-300">{subtitle}</p>
-            </div>
+        <div className="mb-5 grid grid-cols-2 rounded-2xl border border-white/10 bg-white/5 p-1">
+          <button
+            type="button"
+            onClick={() => setModeSafe("login")}
+            className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+              mode === "login"
+                ? "bg-gradient-to-r from-violet-600/90 to-blue-600/90 text-white shadow-[0_0_30px_rgba(124,58,237,0.45)]"
+                : "text-zinc-400 hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            Log in
+          </button>
+          <button
+            type="button"
+            onClick={() => setModeSafe("register")}
+            className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+              mode === "register"
+                ? "bg-gradient-to-r from-violet-600/90 to-blue-600/90 text-white shadow-[0_0_30px_rgba(124,58,237,0.45)]"
+                : "text-zinc-400 hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            Sign up
+          </button>
+        </div>
 
-            <div className="mb-5 grid grid-cols-2 rounded-xl border border-white/10 bg-slate-950/70 p-1">
-              <button
-                type="button"
-                onClick={() => setModeSafe("login")}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${mode === "login" ? "bg-indigo-500 text-white" : "text-slate-300 hover:text-white"}`}
-              >
-                Đăng nhập
-              </button>
-              <button
-                type="button"
-                onClick={() => setModeSafe("register")}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${mode === "register" ? "bg-indigo-500 text-white" : "text-slate-300 hover:text-white"}`}
-              >
-                Đăng ký
-              </button>
-            </div>
+        <div className="space-y-3">
+          <Input type="email" label="Email" placeholder="email@example.com" value={email} onChange={setEmail} />
 
-            <div className="space-y-3">
-              <Input
-                type="email"
-                placeholder="email@example.com"
-                value={email}
-                onChange={setEmail}
+          {mode === "register" && (
+            <Input type="text" label="Display name" placeholder="Tên hiển thị" value={displayName} onChange={setDisplayName} />
+          )}
+
+          {(mode === "login" || mode === "register") && (
+            <PasswordInput
+              label="Password"
+              placeholder="Nhập mật khẩu"
+              value={password}
+              onChange={setPassword}
+              visible={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+            />
+          )}
+
+          {mode === "register" && (
+            <PasswordInput
+              label="Confirm password"
+              placeholder="Nhập lại mật khẩu"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              visible={showConfirmPassword}
+              onToggle={() => setShowConfirmPassword((v) => !v)}
+            />
+          )}
+
+          {(mode === "verify" || mode === "reset") && (
+            <Input type="text" label="Verification code" placeholder="Nhập mã xác minh" value={code} onChange={setCode} />
+          )}
+
+          {mode === "reset" && (
+            <>
+              <PasswordInput
+                label="New password"
+                placeholder="Mật khẩu mới"
+                value={newPassword}
+                onChange={setNewPassword}
+                visible={showNewPassword}
+                onToggle={() => setShowNewPassword((v) => !v)}
               />
+              <PasswordInput
+                label="Confirm new password"
+                placeholder="Nhập lại mật khẩu mới"
+                value={confirmNewPassword}
+                onChange={setConfirmNewPassword}
+                visible={showConfirmNewPassword}
+                onToggle={() => setShowConfirmNewPassword((v) => !v)}
+              />
+            </>
+          )}
+        </div>
 
-              {mode === "register" && (
-                <Input
-                  type="text"
-                  placeholder="Tên hiển thị"
-                  value={displayName}
-                  onChange={setDisplayName}
-                />
-              )}
-
-              {(mode === "login" || mode === "register") && (
-                <PasswordInput
-                  placeholder="Mật khẩu"
-                  value={password}
-                  onChange={setPassword}
-                  visible={showPassword}
-                  onToggle={() => setShowPassword((v) => !v)}
-                />
-              )}
-
-              {mode === "register" && (
-                <PasswordInput
-                  placeholder="Xác nhận mật khẩu"
-                  value={confirmPassword}
-                  onChange={setConfirmPassword}
-                  visible={showConfirmPassword}
-                  onToggle={() => setShowConfirmPassword((v) => !v)}
-                />
-              )}
-
-              {(mode === "verify" || mode === "reset") && (
-                <Input
-                  type="text"
-                  placeholder="Mã xác minh"
-                  value={code}
-                  onChange={setCode}
-                />
-              )}
-
-              {mode === "reset" && (
-                <>
-                  <PasswordInput
-                    placeholder="Mật khẩu mới"
-                    value={newPassword}
-                    onChange={setNewPassword}
-                    visible={showNewPassword}
-                    onToggle={() => setShowNewPassword((v) => !v)}
-                  />
-                  <PasswordInput
-                    placeholder="Xác nhận mật khẩu mới"
-                    value={confirmNewPassword}
-                    onChange={setConfirmNewPassword}
-                    visible={showConfirmNewPassword}
-                    onToggle={() => setShowConfirmNewPassword((v) => !v)}
-                  />
-                </>
-              )}
-            </div>
-
-            {(error || message) && (
-              <div className="mt-4 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-slate-200">{error || message}</div>
-            )}
-
-            {devCode && (
-              <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
-                Dev code: {devCode}
-              </div>
-            )}
-
-            <div className="mt-5 space-y-2">
-              {mode === "login" && <PrimaryButton label={loading ? "Đang đăng nhập..." : "Đăng nhập"} onClick={onLogin} disabled={loading} icon={<Shield size={16} />} />}
-              {mode === "register" && <PrimaryButton label={loading ? "Đang đăng ký..." : "Tạo tài khoản an toàn"} onClick={onRegister} disabled={loading} icon={<UserPlus size={16} />} />}
-              {mode === "verify" && (
-                <>
-                  <PrimaryButton label={loading ? "Đang xác minh..." : "Xác minh email"} onClick={onVerify} disabled={loading} icon={<MailCheck size={16} />} />
-                  <SecondaryButton label="Gửi lại mã" onClick={onResendVerification} disabled={loading} />
-                </>
-              )}
-              {mode === "forgot" && <PrimaryButton label={loading ? "Đang gửi..." : "Gửi mã đặt lại"} onClick={onRequestReset} disabled={loading} icon={<KeyRound size={16} />} />}
-              {mode === "reset" && <PrimaryButton label={loading ? "Đang đặt lại..." : "Đặt lại mật khẩu"} onClick={onResetPassword} disabled={loading} icon={<KeyRound size={16} />} />}
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-400">
-              {mode !== "login" && <button type="button" onClick={() => setModeSafe("login")} className="hover:text-white">Về đăng nhập</button>}
-              {mode !== "register" && <button type="button" onClick={() => setModeSafe("register")} className="hover:text-white">Tạo tài khoản</button>}
-              {mode !== "forgot" && <button type="button" onClick={() => setModeSafe("forgot")} className="hover:text-white">Quên mật khẩu?</button>}
-              {mode !== "verify" && <button type="button" onClick={() => setModeSafe("verify")} className="hover:text-white">Xác minh email</button>}
-            </div>
+        {(error || message) && (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-zinc-100">
+            {error || message}
           </div>
-        </section>
-      </div>
-    </div>
+        )}
+
+        {devCode && (
+          <div className="mt-3 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
+            Dev code: {devCode}
+          </div>
+        )}
+
+        <div className="mt-5 space-y-2">
+          {mode === "login" && (
+            <PrimaryButton label={loading ? "Logging in..." : "Log in"} onClick={onLogin} disabled={loading} icon={<Shield size={16} />} />
+          )}
+          {mode === "register" && (
+            <PrimaryButton label={loading ? "Creating..." : "Create account"} onClick={onRegister} disabled={loading} icon={<UserPlus size={16} />} />
+          )}
+          {mode === "verify" && (
+            <>
+              <PrimaryButton label={loading ? "Verifying..." : "Verify"} onClick={onVerify} disabled={loading} icon={<MailCheck size={16} />} />
+              <SecondaryButton label="Resend code" onClick={onResendVerification} disabled={loading} />
+            </>
+          )}
+          {mode === "forgot" && (
+            <PrimaryButton
+              label={loading ? "Sending..." : "Send reset code"}
+              onClick={onRequestReset}
+              disabled={loading}
+              icon={<KeyRound size={16} />}
+            />
+          )}
+          {mode === "reset" && (
+            <PrimaryButton
+              label={loading ? "Updating..." : "Update password"}
+              onClick={onResetPassword}
+              disabled={loading}
+              icon={<KeyRound size={16} />}
+            />
+          )}
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-xs text-zinc-400">
+          {mode !== "login" && (
+            <button type="button" onClick={() => setModeSafe("login")} className="text-violet-300 hover:text-violet-200">
+              Back to login
+            </button>
+          )}
+          {mode !== "register" && (
+            <button type="button" onClick={() => setModeSafe("register")} className="text-violet-300 hover:text-violet-200">
+              Create an account
+            </button>
+          )}
+          {mode !== "forgot" && (
+            <button type="button" onClick={() => setModeSafe("forgot")} className="text-violet-300 hover:text-violet-200">
+              Forgot password?
+            </button>
+          )}
+          {mode !== "verify" && (
+            <button type="button" onClick={() => setModeSafe("verify")} className="text-violet-300 hover:text-violet-200">
+              Verify email
+            </button>
+          )}
+        </div>
+      </AuthCard>
+    </AuthShell>
   );
 }
 
 function Input({
   type,
+  label,
   placeholder,
   value,
   onChange,
 }: {
   type: string;
+  label: string;
   placeholder: string;
   value: string;
   onChange: (value: string) => void;
 }) {
   return (
-    <input
-      type={type}
-      placeholder={placeholder}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/80 px-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/25"
-    />
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium text-zinc-200">{label}</span>
+      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 transition focus-within:border-violet-400/70 focus-within:ring-2 focus-within:ring-violet-500/20">
+        <input
+          type={type}
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
+        />
+      </div>
+    </label>
   );
 }
 
 function PasswordInput({
+  label,
   placeholder,
   value,
   onChange,
   visible,
   onToggle,
 }: {
+  label: string;
   placeholder: string;
   value: string;
   onChange: (value: string) => void;
@@ -296,23 +342,21 @@ function PasswordInput({
   onToggle: () => void;
 }) {
   return (
-    <div className="relative">
-      <input
-        type={visible ? "text" : "password"}
-        placeholder={placeholder}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/80 px-3 pr-10 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/25"
-      />
-      <button
-        type="button"
-        onClick={onToggle}
-        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-white"
-        aria-label={visible ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
-      >
-        {visible ? <EyeOff size={16} /> : <Eye size={16} />}
-      </button>
-    </div>
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium text-zinc-200">{label}</span>
+      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 transition focus-within:border-violet-400/70 focus-within:ring-2 focus-within:ring-violet-500/20">
+        <input
+          type={visible ? "text" : "password"}
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
+        />
+        <button type="button" onClick={onToggle} className="text-zinc-400 hover:text-white" aria-label={visible ? "Ẩn mật khẩu" : "Hiện mật khẩu"}>
+          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+    </label>
   );
 }
 
@@ -332,7 +376,7 @@ function PrimaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 via-violet-500 to-blue-500 text-sm font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-blue-600 px-4 py-3 font-semibold text-white shadow-lg shadow-violet-900/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {icon}
       {label}
@@ -354,7 +398,7 @@ function SecondaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="h-10 w-full rounded-xl border border-white/15 bg-slate-950/60 text-sm text-slate-100 transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+      className="w-full rounded-2xl border border-white/15 bg-white/[0.04] px-4 py-2.5 text-sm text-zinc-100 transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {label}
     </button>

@@ -31,12 +31,12 @@ export function ConversationList({
 
   if (conversations.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full py-16 px-6 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mb-3">
-          <MessageSquare size={20} className="text-muted-foreground" />
+      <div className="flex h-full flex-col items-center justify-center px-6 py-16 text-center">
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.06]">
+          <MessageSquare size={20} className="text-zinc-400" />
         </div>
-        <p className="text-sm text-muted-foreground">No conversations yet</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">
+        <p className="text-sm text-zinc-400">Chưa có cuộc trò chuyện</p>
+        <p className="mt-1 text-xs text-zinc-500">
           Start a new chat to begin
         </p>
       </div>
@@ -44,7 +44,7 @@ export function ConversationList({
   }
 
   return (
-    <div className="py-1">
+    <div className="space-y-1.5 p-2">
       {conversations.map((conv) => (
         <ConversationItem
           key={conv.id}

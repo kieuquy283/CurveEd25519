@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useMemo, useState } from "react";
 import { ChevronDown, FileText, Search, ShieldCheck, UserPen, X } from "lucide-react";
@@ -76,17 +76,14 @@ export function ConversationInfoPanel({
   const avatarLetter = (displayName || "?").charAt(0).toUpperCase();
 
   return (
-    <aside
-      className="h-full w-full md:w-[360px] shrink-0 border-l border-[var(--border)] bg-zinc-950 text-zinc-100 overflow-y-auto"
-      aria-label="Thông tin cuộc trò chuyện"
-    >
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-zinc-950/95 px-4 py-3 backdrop-blur">
+    <aside className="h-full w-full overflow-y-auto rounded-[2rem] border border-white/10 bg-slate-950/70 text-zinc-100 shadow-[0_0_60px_rgba(79,70,229,0.2)] backdrop-blur-xl" aria-label="Thông tin cuộc trò chuyện">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-slate-950/85 px-5 py-4 backdrop-blur">
         <h3 className="text-sm font-semibold">Thông tin cuộc trò chuyện</h3>
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+            className="rounded-xl p-2 text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100"
             aria-label="Đóng thông tin cuộc trò chuyện"
           >
             <X size={16} />
@@ -94,56 +91,33 @@ export function ConversationInfoPanel({
         )}
       </div>
 
-      <div className="px-4 py-4">
-        <div className="flex flex-col items-center text-center">
-          <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 text-xl font-semibold text-white">
+      <div className="px-4 py-5">
+        <div className="px-2 text-center">
+          <div className="mx-auto mb-3 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-blue-500 text-2xl font-semibold text-white ring-4 ring-violet-400/20 shadow-[0_0_40px_rgba(124,58,237,0.28)]">
             {avatarLetter}
           </div>
           <div className="text-base font-semibold">{displayName}</div>
           <div className="text-xs text-zinc-400">{subtitle}</div>
           <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-700/40 bg-emerald-900/20 px-2 py-1 text-xs text-emerald-300">
             <ShieldCheck size={12} />
-            <span>{isTrusted ? "Đã xác minh" : "Được mã hóa đầu cuối"}</span>
+            <span>{isTrusted ? "Đã xác minh" : "Tin nhắn được mã hóa đầu cuối"}</span>
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setSearchExpanded(true);
-            }}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2 text-xs hover:border-zinc-700"
-          >
-            <span className="mx-auto mb-1 block w-fit"><Search size={14} /></span>
-            Tìm kiếm
-          </button>
-          <button
-            type="button"
-            onClick={() => setOpenFiles((v) => !v)}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2 text-xs hover:border-zinc-700"
-          >
-            <span className="mx-auto mb-1 block w-fit"><FileText size={14} /></span>
-            File
-          </button>
-          <button
-            type="button"
-            onClick={() => setEditingNickname((v) => !v)}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2 text-xs hover:border-zinc-700"
-          >
-            <span className="mx-auto mb-1 block w-fit"><UserPen size={14} /></span>
-            Biệt danh
-          </button>
+        <div className="mt-5 grid grid-cols-3 gap-3">
+          <ActionCard label="Search" onClick={() => setSearchExpanded(true)} icon={<Search size={14} />} />
+          <ActionCard label="Files" onClick={() => setOpenFiles((v) => !v)} icon={<FileText size={14} />} />
+          <ActionCard label="Edit nickname" onClick={() => setEditingNickname((v) => !v)} icon={<UserPen size={14} />} />
         </div>
 
-        <Section title="Thông tin về đoạn chat" open={openAbout} onToggle={() => setOpenAbout((v) => !v)}>
+        <Section title="Thông tin cuộc trò chuyện" open={openAbout} onToggle={() => setOpenAbout((v) => !v)}>
           <div className="text-xs text-zinc-400">
-            {conversation.isOnline ? "Đang hoạt động" : "Ngoại tuyến"}
+            {conversation.isOnline ? "Đã kết nối an toàn" : "Mất kết nối"}
             {currentUser?.email ? ` · Bạn: ${currentUser.email}` : ""}
           </div>
         </Section>
 
-        <Section title="Tùy chỉnh đoạn chat" open={openCustomize} onToggle={() => setOpenCustomize((v) => !v)}>
+        <Section title="Biệt danh" open={openCustomize} onToggle={() => setOpenCustomize((v) => !v)}>
           {editingNickname ? (
             <form
               className="space-y-2"
@@ -157,26 +131,23 @@ export function ConversationInfoPanel({
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
                 placeholder="Nhập biệt danh"
-                className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+                aria-label="Biệt danh"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm outline-none focus:border-violet-400/50"
               />
-              <button type="submit" className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">
+              <button type="submit" className="rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-3 py-1.5 text-xs font-medium text-white">
                 Lưu biệt danh
               </button>
             </form>
           ) : (
-            <button
-              type="button"
-              onClick={() => setEditingNickname(true)}
-              className="text-xs text-zinc-300 underline decoration-zinc-600 underline-offset-2"
-            >
+            <button type="button" onClick={() => setEditingNickname(true)} className="text-xs text-zinc-300 underline decoration-zinc-600 underline-offset-2">
               Chỉnh sửa biệt danh
             </button>
           )}
         </Section>
 
-        <Section title="File phương tiện và file" open={openFiles} onToggle={() => setOpenFiles((v) => !v)}>
+        <Section title="Tệp đã chia sẻ" open={openFiles} onToggle={() => setOpenFiles((v) => !v)}>
           {attachments.length === 0 ? (
-            <div className="text-xs text-zinc-500">Chưa có file trong đoạn chat này.</div>
+            <div className="text-xs text-zinc-500">Chưa có tệp trong cuộc trò chuyện này.</div>
           ) : (
             <div className="space-y-2">
               {attachments.map((a) => (
@@ -185,11 +156,13 @@ export function ConversationInfoPanel({
                   type="button"
                   disabled={a.disabled}
                   onClick={() => a.onOpen?.()}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 p-2 text-left text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-left text-xs hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <div className="truncate font-medium text-zinc-200">{a.name}</div>
-                  <div className="truncate text-zinc-400">{a.type} · {formatBytes(a.size)}</div>
-                  <div className="text-zinc-500">{new Date(a.timestamp).toLocaleString()}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-zinc-200">{a.name}</div>
+                    <div className="truncate text-zinc-400">{a.type} · {formatBytes(a.size)}</div>
+                    <div className="text-zinc-500">{new Date(a.timestamp).toLocaleString()}</div>
+                  </div>
                 </button>
               ))}
             </div>
@@ -197,8 +170,8 @@ export function ConversationInfoPanel({
         </Section>
 
         {searchExpanded && (
-          <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-            <div className="mb-2 text-xs font-medium text-zinc-200">Tìm trong đoạn chat</div>
+          <div className="mx-1 mt-4 rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="mb-2 text-xs font-medium text-zinc-200">Search in conversation</div>
             <input
               value={searchQuery}
               onChange={(e) => {
@@ -206,8 +179,9 @@ export function ConversationInfoPanel({
                 setSearchQuery(q);
                 onSearch(q);
               }}
-              placeholder="Tìm theo tin nhắn hoặc tên file"
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+              placeholder="Tìm trong đoạn chat"
+              aria-label="Tìm trong đoạn chat"
+              className="w-full rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm outline-none focus:border-violet-400/50"
             />
             <div className="mt-2 text-xs text-zinc-400">{filteredMessages.length} kết quả</div>
             <div className="mt-2 max-h-52 space-y-1 overflow-y-auto">
@@ -216,7 +190,7 @@ export function ConversationInfoPanel({
                   key={m.id}
                   type="button"
                   onClick={() => onSearchResultClick(m.id)}
-                  className="w-full rounded border border-zinc-800 px-2 py-1 text-left text-xs hover:border-zinc-700"
+                  className="w-full rounded-xl border border-white/10 px-2 py-1.5 text-left text-xs hover:bg-white/[0.06]"
                 >
                   <div className="truncate text-zinc-200">{m.text || m.file?.fileName || m.file?.filename || "File đính kèm"}</div>
                   <div className="text-zinc-500">{new Date(m.timestamp).toLocaleString()}</div>
@@ -230,25 +204,23 @@ export function ConversationInfoPanel({
   );
 }
 
-function Section({
-  title,
-  open,
-  onToggle,
-  children,
-}: {
-  title: string;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
+function ActionCard({ label, onClick, icon }: { label: string; onClick: () => void; icon: React.ReactNode }) {
   return (
-    <section className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900">
-      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium">
-        <span>{title}</span>
-        <ChevronDown size={16} className={open ? "rotate-180" : ""} />
-      </button>
-      {open && <div className="border-t border-zinc-800 px-3 py-3">{children}</div>}
-    </section>
+    <button type="button" onClick={onClick} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-xs text-zinc-300 hover:bg-violet-500/10 hover:text-white">
+      <span className="mx-auto mb-1 block w-fit">{icon}</span>
+      {label}
+    </button>
   );
 }
 
+function Section({ title, open, onToggle, children }: { title: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
+  return (
+    <section className="mx-1 mb-4 mt-4 rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between text-left text-sm font-semibold text-zinc-100">
+        <span>{title}</span>
+        <ChevronDown size={16} className={open ? "rotate-180" : ""} />
+      </button>
+      {open && <div className="mt-3 border-t border-white/10 pt-3">{children}</div>}
+    </section>
+  );
+}

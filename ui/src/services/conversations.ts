@@ -9,15 +9,29 @@ async function parseOrThrow(response: Response) {
 }
 
 export async function listConversations(user: string) {
-  const response = await fetch(`${getApiBaseUrl()}/api/conversations?user=${encodeURIComponent(user)}`);
-  return parseOrThrow(response) as Promise<{ ok: boolean; conversations: Array<Record<string, unknown>> }>;
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/api/conversations?user=${encodeURIComponent(user)}`);
+    return parseOrThrow(response) as Promise<{ ok: boolean; conversations: Array<Record<string, unknown>> }>;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return { ok: false, conversations: [] };
+    }
+    throw error;
+  }
 }
 
 export async function listConversationMessages(conversationId: string, user: string, limit = 100) {
-  const response = await fetch(
-    `${getApiBaseUrl()}/api/conversations/${encodeURIComponent(conversationId)}/messages?user=${encodeURIComponent(user)}&limit=${limit}`
-  );
-  return parseOrThrow(response) as Promise<{ ok: boolean; messages: Array<Record<string, unknown>> }>;
+  try {
+    const response = await fetch(
+      `${getApiBaseUrl()}/api/conversations/${encodeURIComponent(conversationId)}/messages?user=${encodeURIComponent(user)}&limit=${limit}`
+    );
+    return parseOrThrow(response) as Promise<{ ok: boolean; messages: Array<Record<string, unknown>> }>;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return { ok: false, messages: [] };
+    }
+    throw error;
+  }
 }
 
 export async function saveConversationMessage(

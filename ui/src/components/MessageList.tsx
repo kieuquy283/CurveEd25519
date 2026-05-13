@@ -40,12 +40,12 @@ export function MessageList({
   }, [messages, typingPeers]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-black">
+    <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
       {messages.length === 0 ? (
         <div className="h-full flex items-center justify-center">
           <div className="text-center text-zinc-500">
-            <p className="text-sm">No messages yet</p>
-            <p className="text-xs mt-1">Start a conversation</p>
+            <p className="text-sm">Đoạn chat chưa có tin nhắn</p>
+            <p className="mt-1 text-xs">Bắt đầu cuộc trò chuyện an toàn</p>
           </div>
         </div>
       ) : (

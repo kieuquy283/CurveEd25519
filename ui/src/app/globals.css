@@ -174,11 +174,17 @@
   50%       { opacity: 0.6; transform: scale(0.85); }
 }
 
+@keyframes auth-glow-float {
+  0%, 100% { transform: translateY(0px) scale(1); opacity: 0.6; }
+  50% { transform: translateY(-8px) scale(1.04); opacity: 0.9; }
+}
+
 .animate-slide-up      { animation: slide-up 0.2s ease-out; }
 .animate-slide-in-left { animation: slide-in-left 0.2s ease-out; }
 .animate-slide-in-right{ animation: slide-in-right 0.2s ease-out; }
 .animate-fade-in       { animation: fade-in 0.15s ease-out; }
 .animate-pulse-dot     { animation: pulse-dot 2s ease-in-out infinite; }
+.auth-glow-orb { animation: auth-glow-float 7s ease-in-out infinite; }
 
 .typing-dot {
   animation: typing-bounce 1.4s ease-in-out infinite;

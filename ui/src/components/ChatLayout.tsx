@@ -18,13 +18,18 @@ export function ChatLayout() {
   const [mobileSidebar, setMobileSidebar] = useState(true);
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-[var(--chat-bg)]">
+    <div className="relative min-h-screen overflow-hidden bg-[#050816] text-zinc-100">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-40 left-24 h-96 w-96 rounded-full bg-violet-600/25 blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 h-[32rem] w-[32rem] rounded-full bg-blue-600/20 blur-3xl" />
+        <div className="absolute top-1/3 right-0 h-80 w-80 rounded-full bg-fuchsia-600/10 blur-3xl" />
+      </div>
+      <div className="relative z-10 grid h-screen w-full gap-3 p-3 md:p-4 lg:grid-cols-[360px_minmax(0,1fr)]">
       <aside
         className={cn(
-          "flex-shrink-0 flex flex-col",
-          "w-full md:w-[320px] lg:w-[360px]",
-          "border-r border-[var(--border)]",
-          "bg-[var(--sidebar-bg)]",
+          "flex min-h-0 flex-col",
+          "w-full",
+          "rounded-[2rem] border border-white/10 bg-slate-950/70 shadow-[0_0_60px_rgba(79,70,229,0.2)] backdrop-blur-xl",
           "md:flex",
           activeConversationId && !mobileSidebar ? "hidden" : "flex"
         )}
@@ -34,7 +39,7 @@ export function ChatLayout() {
 
       <main
         className={cn(
-          "flex-1 flex flex-col min-w-0 overflow-hidden",
+          "flex min-w-0 flex-1 flex-col overflow-hidden",
           "md:flex",
           activeConversationId && !mobileSidebar ? "flex" : "hidden md:flex"
         )}
@@ -45,6 +50,7 @@ export function ChatLayout() {
           <EmptyState />
         )}
       </main>
+      </div>
     </div>
   );
 }

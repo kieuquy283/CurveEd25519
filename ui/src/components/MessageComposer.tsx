@@ -276,7 +276,7 @@ export function MessageComposer({ conversationId }: Props) {
       conversationId,
       from: currentUserId,
       to: conversationId,
-      text: isFileMessage ? trimmed || `ðŸ“Ž ${file?.file.name ?? "Attachment"}` : trimmed,
+      text: isFileMessage ? trimmed || `📎 ${file?.file.name ?? "Attachment"}` : trimmed,
       timestamp: now,
       status: "pending",
       type: isFileMessage ? "file" : "text",
@@ -362,9 +362,9 @@ export function MessageComposer({ conversationId }: Props) {
   }, [conversationId, currentUserEmail, encryptMessage, pendingFile, sending, text, chatStore, isTrustedContact]);
 
   return (
-    <div className="border-t border-zinc-800 p-4">
+    <div className="border-t border-white/10 bg-slate-950/70 p-4 backdrop-blur-xl">
       {pendingFile && (
-        <div className="mb-3 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3">
+        <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-zinc-100">{pendingFile.file.name}</div>
             <div className="mt-1 text-xs text-zinc-400">
@@ -389,14 +389,14 @@ export function MessageComposer({ conversationId }: Props) {
         </div>
       )}
 
-      <div className="mb-3 flex flex-wrap gap-2">
+        <div className="mb-3 flex flex-wrap gap-2">
         <div
           className={`inline-flex items-center rounded-lg border px-3 py-2 text-xs ${
             backendReachable === true
               ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
               : backendReachable === false
                 ? "border-red-500/40 bg-red-500/10 text-red-200"
-                : "border-zinc-700 bg-zinc-900 text-zinc-300"
+                : "border-white/10 bg-white/[0.04] text-zinc-300"
           }`}
         >
           {backendReachable === true
@@ -410,7 +410,7 @@ export function MessageComposer({ conversationId }: Props) {
         <button
           type="button"
           onClick={() => signFileInputRef.current?.click()}
-          className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200 hover:border-blue-500"
+          className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-200 hover:bg-violet-500/10"
         >
           <FileSignature size={14} />
           Ký file
@@ -427,7 +427,7 @@ export function MessageComposer({ conversationId }: Props) {
           type="button"
           disabled={verifying}
           onClick={() => verifyFileInputRef.current?.click()}
-          className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200 hover:border-emerald-500 disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-200 hover:bg-violet-500/10 disabled:opacity-50"
         >
           <FileCheck2 size={14} />
           Xác minh chữ ký
@@ -435,7 +435,7 @@ export function MessageComposer({ conversationId }: Props) {
       </div>
 
       {verifyResult && (
-        <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3 text-xs">
+        <div className="mb-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs">
           <div className="mb-1 flex items-center justify-between">
             <div className="text-zinc-100 font-medium">
               Kết quả xác minh chữ ký
@@ -486,14 +486,14 @@ export function MessageComposer({ conversationId }: Props) {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 rounded-[1.75rem] border border-white/10 bg-white/[0.05] px-3 py-2 shadow-[0_0_35px_rgba(15,23,42,0.4)] focus-within:border-violet-400/60 focus-within:ring-2 focus-within:ring-violet-500/20">
         <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
 
         <button
           type="button"
           disabled={sending}
           onClick={handlePickFile}
-          className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-zinc-300 transition-colors hover:border-blue-500 hover:text-blue-400 disabled:opacity-50"
+          className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-zinc-300 transition-colors hover:bg-violet-500/15 hover:text-white disabled:opacity-50"
           title="Upload encrypted file"
         >
           <FileUp size={18} />
@@ -510,15 +510,17 @@ export function MessageComposer({ conversationId }: Props) {
               handleSend();
             }
           }}
-          placeholder={pendingFile ? "Add a caption..." : "Send encrypted message..."}
-          className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-blue-500 disabled:opacity-60"
+          placeholder={pendingFile ? "Thêm chú thích..." : "Nhập tin nhắn mã hóa..."}
+          aria-label="Nhập tin nhắn"
+          className="flex-1 bg-transparent px-2 py-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 disabled:opacity-60"
         />
 
         <button
           type="button"
           disabled={sending || (!text.trim() && !pendingFile)}
           onClick={handleSend}
-          className="rounded-xl bg-blue-600 px-4 py-3 transition-colors hover:bg-blue-500 disabled:opacity-50"
+          aria-label="Gửi tin nhắn"
+          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-blue-600 transition hover:brightness-110 disabled:opacity-50"
         >
           {sending ? <Loader2 size={18} className="animate-spin text-white" /> : <Send size={18} className="text-white" />}
         </button>

@@ -1,8 +1,4 @@
-﻿/**
- * Sidebar â€” conversation list, search, connection status, profile.
- */
-
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Conversation } from "@/types/models";
@@ -39,16 +35,12 @@ interface SidebarProps {
 export function Sidebar({ onSelectConversation }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showDialog, setShowDialog] = useState(false);
-  const [showSignatureDialog, setShowSignatureDialog] =
-    useState(false);
+  const [showSignatureDialog, setShowSignatureDialog] = useState(false);
   const { currentUser, logout } = useAuthStore();
   const replaceContacts = useContactStore((s) => s.replaceContacts);
   const contactMap = useContactStore((s) => s.contacts);
   const trustedContacts = useMemo(
-    () =>
-      Array.from(contactMap.values()).filter(
-        (contact) => contact.trusted
-      ),
+    () => Array.from(contactMap.values()).filter((contact) => contact.trusted),
     [contactMap]
   );
   const [connectTo, setConnectTo] = useState("");
@@ -129,15 +121,9 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
           const b = String(row.user_b_email || "");
           const me = String(userId).toLowerCase();
           const peer = String(row.peer_email || (a.toLowerCase() === me ? b : a));
-          const metadata = (row.metadata && typeof row.metadata === "object")
-            ? (row.metadata as Record<string, unknown>)
-            : {};
-          const nicknameMap = (metadata.nicknames && typeof metadata.nicknames === "object")
-            ? (metadata.nicknames as Record<string, unknown>)
-            : {};
-          const byUser = (nicknameMap[me] && typeof nicknameMap[me] === "object")
-            ? (nicknameMap[me] as Record<string, unknown>)
-            : {};
+          const metadata = row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : {};
+          const nicknameMap = metadata.nicknames && typeof metadata.nicknames === "object" ? (metadata.nicknames as Record<string, unknown>) : {};
+          const byUser = nicknameMap[me] && typeof nicknameMap[me] === "object" ? (nicknameMap[me] as Record<string, unknown>) : {};
           const serverNickname = String(byUser[String(peer).toLowerCase()] || "");
           const localNickname = getNickname(userId, peer) || "";
           const peerName = localNickname || serverNickname || String(row.peer_display_name || peer);
@@ -153,44 +139,11 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
           });
         }
       })
-      .catch((error) => {
-        console.warn("[Sidebar] Failed to fetch conversations:", error);
+      .catch((fetchError) => {
+        console.warn("[Sidebar] Failed to fetch conversations:", fetchError);
         loadedConversationsForUserRef.current = null;
       });
   }, [currentUser?.id, currentUser?.email, addConversation]);
-
-  useEffect(() => {
-    const userId = currentUser?.id || currentUser?.email;
-    if (!userId || !activeConversationId) return;
-    const key = `${userId}::${activeConversationId}`;
-    if (loadedMessagesForKeyRef.current === key) return;
-    loadedMessagesForKeyRef.current = key;
-    listConversationMessages(activeConversationId, userId, 100)
-      .then((result) => {
-        const mapped = result.messages.map((m) => ({
-          id: String(m.id || m.packet_id || crypto.randomUUID()),
-          packetId: (m.packet_id as string | undefined) || undefined,
-          conversationId: String(m.conversation_id || activeConversationId),
-          from: String(m.sender_email || ""),
-          to: String(m.receiver_email || ""),
-          text: String(m.plaintext_preview || ""),
-          type: (String(m.message_type || "text") as "text" | "file"),
-          envelope: (m.ciphertext_envelope as Record<string, unknown> | undefined) || undefined,
-          attachments:
-            m.attachment_json && typeof m.attachment_json === "object"
-              ? [m.attachment_json as never]
-              : undefined,
-          cryptoDebug: (m.crypto_debug as Record<string, unknown> | undefined) || undefined,
-          timestamp: String(m.created_at || new Date().toISOString()),
-          status: (String(m.status || "delivered") as "pending" | "queued" | "sent" | "delivered" | "acked" | "read" | "failed" | "expired" | "dropped"),
-        }));
-        addMessages(mapped);
-      })
-      .catch((error) => {
-        console.warn("[Sidebar] Failed to fetch messages:", error);
-        loadedMessagesForKeyRef.current = null;
-      });
-  }, [activeConversationId, currentUser?.id, currentUser?.email, addMessages]);
 
   useEffect(() => {
     const userId = currentUser?.id || currentUser?.email;
@@ -207,7 +160,7 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
             id: String(n.id || crypto.randomUUID()),
             title: String(n.title || "Thông báo"),
             body: String(n.body || ""),
-            level: (String(n.type || "info") === "message" ? "message" : "info"),
+            level: String(n.type || "info") === "message" ? "message" : "info",
             read: Boolean(n.read),
             dismissed: false,
             createdAt,
@@ -226,9 +179,47 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
     };
   }, [currentUser?.id, currentUser?.email, upsertNotification]);
 
+  useEffect(() => {
+    const userId = currentUser?.id || currentUser?.email;
+    if (!userId || !activeConversationId) return;
+    const key = `${userId}::${activeConversationId}`;
+    if (loadedMessagesForKeyRef.current === key) return;
+    loadedMessagesForKeyRef.current = key;
+    listConversationMessages(activeConversationId, userId, 100)
+      .then((result) => {
+        const mapped = result.messages.map((m) => ({
+          id: String(m.id || m.packet_id || crypto.randomUUID()),
+          packetId: (m.packet_id as string | undefined) || undefined,
+          conversationId: String(m.conversation_id || activeConversationId),
+          from: String(m.sender_email || ""),
+          to: String(m.receiver_email || ""),
+          text: String(m.plaintext_preview || ""),
+          type: String(m.message_type || "text") as "text" | "file",
+          envelope: (m.ciphertext_envelope as Record<string, unknown> | undefined) || undefined,
+          attachments: m.attachment_json && typeof m.attachment_json === "object" ? [m.attachment_json as never] : undefined,
+          cryptoDebug: (m.crypto_debug as Record<string, unknown> | undefined) || undefined,
+          timestamp: String(m.created_at || new Date().toISOString()),
+          status: String(m.status || "delivered") as
+            | "pending"
+            | "queued"
+            | "sent"
+            | "delivered"
+            | "acked"
+            | "read"
+            | "failed"
+            | "expired"
+            | "dropped",
+        }));
+        addMessages(mapped);
+      })
+      .catch((fetchError) => {
+        console.warn("[Sidebar] Failed to fetch messages:", fetchError);
+        loadedMessagesForKeyRef.current = null;
+      });
+  }, [activeConversationId, currentUser?.id, currentUser?.email, addMessages]);
+
   const handleCreateConversation = (contact: { id: string; name: string }) => {
     const now = new Date().toISOString();
-
     const conversation: Conversation = {
       id: contact.id,
       peerId: contact.id,
@@ -245,100 +236,88 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 pt-4 pb-3 border-b border-[var(--border)]">
-        <div className="flex items-center justify-between mb-3">
+    <div className="flex h-full flex-col">
+      <div className="border-b border-white/10 px-5 pb-4 pt-5">
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-lg glow-primary">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 via-blue-500 to-cyan-400 shadow-[0_0_30px_rgba(99,102,241,0.45)]">
               <Shield size={15} className="text-white" strokeWidth={2.5} />
             </div>
 
             <div>
-              <h1 className="text-sm font-semibold leading-tight text-foreground">
-                CurveApp
-              </h1>
-              <p className="text-[10px] text-muted-foreground leading-none">
-                Secure Messenger
-              </p>
+              <h1 className="text-sm font-semibold leading-tight text-zinc-100">CurveApp</h1>
+              <p className="text-[10px] leading-none text-zinc-400">Secure Messenger</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setShowDialog(true)}
-              className="w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center transition-colors"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] transition-colors hover:bg-violet-500/15"
               title="New encrypted conversation"
               type="button"
+              aria-label="Tạo cuộc trò chuyện mới"
             >
-              <Plus size={16} className="text-muted-foreground" />
+              <Plus size={16} className="text-violet-200" />
             </button>
 
             <button
-              onClick={() =>
-                setShowSignatureDialog(true)
-              }
-              className="w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center transition-colors"
+              onClick={() => setShowSignatureDialog(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] transition-colors hover:bg-violet-500/15"
               title="Ký file"
               type="button"
+              aria-label="Ký file"
             >
-              <FileSignature
-                size={16}
-                className="text-muted-foreground"
-              />
+              <FileSignature size={16} className="text-violet-200" />
             </button>
 
             <button
-              className="w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center transition-colors"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] transition-colors hover:bg-violet-500/15"
               title="Settings"
               type="button"
+              aria-label="Cài đặt"
             >
-              <Settings size={16} className="text-muted-foreground" />
+              <Settings size={16} className="text-violet-200" />
             </button>
           </div>
         </div>
 
-        <ConnectionPill
-          connected={connected}
-          connecting={connecting}
-          error={error}
-          attempts={reconnectAttempts}
-        />
+        <ConnectionPill connected={connected} connecting={connecting} error={error} attempts={reconnectAttempts} />
       </div>
 
-      <div className="px-3 py-2 border-b border-[var(--border)]">
-        <div className="relative">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-          />
-
+      <div className="border-b border-white/10 px-4 py-3">
+        <label className="sr-only" htmlFor="conversation-search">Tìm kiếm cuộc trò chuyện</label>
+        <div className="relative rounded-2xl border border-white/10 bg-white/[0.04] focus-within:border-violet-400/60 focus-within:ring-2 focus-within:ring-violet-500/20">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
           <input
+            id="conversation-search"
             type="search"
-            placeholder="Tìm kiếm cuộc trò chuyện..."
+            placeholder="Tìm kiếm cuộc trò chuyện"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(
-              "w-full h-8 pl-8 pr-3 rounded-lg text-sm",
-              "bg-white/5 border border-[var(--border)]",
-              "text-foreground placeholder:text-muted-foreground",
-              "focus:outline-none focus:border-[var(--primary)]/60 focus:bg-white/8",
-              "transition-colors"
+              "h-10 w-full rounded-2xl bg-transparent pl-8 pr-3 text-sm",
+              "text-zinc-100 placeholder:text-zinc-500",
+              "focus:outline-none"
             )}
           />
         </div>
+        <div className="mt-3 grid grid-cols-4 rounded-2xl border border-white/10 bg-white/[0.03] p-1 text-xs">
+          <button type="button" className="rounded-xl bg-white/10 px-2 py-1.5 text-white">All</button>
+          <button type="button" className="rounded-xl px-2 py-1.5 text-zinc-400 hover:text-white">Unread</button>
+          <button type="button" className="rounded-xl px-2 py-1.5 text-zinc-400 hover:text-white">Groups</button>
+          <button type="button" className="rounded-xl px-2 py-1.5 text-zinc-400 hover:text-white">Contacts</button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <ConversationList
-          conversations={filtered}
-          onSelect={onSelectConversation}
-        />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <ConversationList conversations={filtered} onSelect={onSelectConversation} />
       </div>
 
-      <div className="px-3 py-3 border-t border-[var(--border)]">
+      <div className="border-t border-white/10 px-4 py-4">
         <div className="mb-2">
-          <div className="text-[10px] text-zinc-500 mb-1">Notifications</div>
-          <div className="max-h-24 overflow-auto space-y-1">
+          <div className="mb-1 text-[10px] text-zinc-500">Notifications</div>
+          <div className="max-h-24 space-y-1 overflow-auto">
             {notificationHistory.slice(0, 3).map((n) => (
               <button
                 key={n.id}
@@ -368,7 +347,7 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
                   }
                   onSelectConversation?.();
                 }}
-                className="w-full rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-left text-[10px] text-zinc-300 hover:border-zinc-600"
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-2.5 py-2 text-left text-[10px] text-zinc-300 hover:bg-white/[0.08]"
               >
                 <div className="font-medium text-zinc-200">{n.title}</div>
                 <div className="truncate">{n.body}</div>
@@ -377,26 +356,22 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
           </div>
         </div>
 
-        <div className="mb-3 text-[10px] text-zinc-500">Verified contacts: {trustedContacts.length}</div>
+        <div className="mb-3 rounded-2xl border border-violet-400/20 bg-violet-500/10 p-2 text-[10px] text-violet-200">
+          Tin nhắn được mã hóa đầu cuối · Verified contacts: {trustedContacts.length}
+        </div>
 
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-xs font-bold text-white">
-            Y
-          </div>
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-blue-500 text-xs font-bold text-white">Y</div>
 
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-foreground truncate">
-              {currentUser?.displayName || "You"}
-            </p>
-            <p className="text-[10px] text-muted-foreground truncate">
-              {currentUser?.email || "Local peer"}
-            </p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium text-zinc-100">{currentUser?.displayName || "You"}</p>
+            <p className="truncate text-[10px] text-zinc-400">{currentUser?.email || "Local peer"}</p>
           </div>
 
           <button
             type="button"
             onClick={logout}
-            className="rounded-md border border-zinc-700 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+            className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[10px] text-zinc-200 hover:bg-white/[0.08]"
           >
             Logout
           </button>
@@ -432,8 +407,8 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
             setConnectionMsg(`${result.message} (${result.connection_id})`);
             setConnectionId(result.connection_id ?? "");
             setDevCode(result.dev_code ?? "");
-          } catch (error) {
-            setConnectionMsg(error instanceof Error ? error.message : "Request failed");
+          } catch (requestError) {
+            setConnectionMsg(requestError instanceof Error ? requestError.message : "Request failed");
           }
         }}
         onVerifyConnection={async () => {
@@ -464,18 +439,13 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
               }))
             );
             return true;
-          } catch (error) {
-            setConnectionMsg(error instanceof Error ? error.message : "Verify failed");
+          } catch (verifyError) {
+            setConnectionMsg(verifyError instanceof Error ? verifyError.message : "Verify failed");
             return false;
           }
         }}
       />
-      <SignatureDialog
-        open={showSignatureDialog}
-        onClose={() =>
-          setShowSignatureDialog(false)
-        }
-      />
+      <SignatureDialog open={showSignatureDialog} onClose={() => setShowSignatureDialog(false)} />
     </div>
   );
 }
@@ -487,47 +457,36 @@ interface ConnectionPillProps {
   attempts: number;
 }
 
-function ConnectionPill({
-  connected,
-  connecting,
-  error,
-  attempts,
-}: ConnectionPillProps) {
+function ConnectionPill({ connected, connecting, error, attempts }: ConnectionPillProps) {
   if (connected) {
     return (
-      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-500/10 border border-green-500/20">
-        <Wifi size={11} className="text-green-400" />
-        <span className="text-[10px] font-medium text-green-400">
-          Đã kết nối
-        </span>
+      <div className="flex items-center gap-1.5 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1.5">
+        <Wifi size={11} className="text-emerald-300" />
+        <span className="text-[10px] font-medium text-emerald-300">Đã kết nối an toàn</span>
       </div>
     );
   }
 
   if (connecting) {
     return (
-      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-yellow-500/10 border border-yellow-500/20">
-        <Loader2 size={11} className="text-yellow-400 animate-spin" />
-        <span className="text-[10px] font-medium text-yellow-400">
-          Đang kết nối...
-        </span>
+      <div className="flex items-center gap-1.5 rounded-xl border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5">
+        <Loader2 size={11} className="animate-spin text-amber-300" />
+        <span className="text-[10px] font-medium text-amber-300">Đang kết nối...</span>
       </div>
     );
   }
 
   if (error || attempts > 0) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20">
-        <WifiOff size={11} className="text-red-400 shrink-0" />
-        <span className="text-[10px] font-medium text-red-400 truncate">
-          {attempts > 0 ? `Đang kết nối lại... (${attempts})` : "Mất kết nối"}
-        </span>
+      <div className="flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-2.5 py-1.5">
+        <WifiOff size={11} className="shrink-0 text-red-300" />
+        <span className="truncate text-[10px] font-medium text-red-300">{attempts > 0 ? `Đang kết nối lại... (${attempts})` : "Mất kết nối"}</span>
         <button
           type="button"
           onClick={() => {
             websocketService.connect().catch(() => {});
           }}
-          className="ml-auto rounded border border-red-400/40 px-1.5 py-0.5 text-[10px] text-red-200 hover:bg-red-500/20"
+          className="ml-auto rounded-lg border border-red-400/40 px-1.5 py-0.5 text-[10px] text-red-100 hover:bg-red-500/20"
         >
           Kết nối lại
         </button>
@@ -536,11 +495,9 @@ function ConnectionPill({
   }
 
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 border border-[var(--border)]">
-      <WifiOff size={11} className="text-muted-foreground" />
-      <span className="text-[10px] text-muted-foreground">Mất kết nối</span>
+    <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5">
+      <WifiOff size={11} className="text-zinc-400" />
+      <span className="text-[10px] text-zinc-400">Mất kết nối</span>
     </div>
   );
 }
-
-

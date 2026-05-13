@@ -54,7 +54,7 @@ export default function AttachmentPreview({
       setVerifyResult({
         ok: false,
         valid: false,
-        message: err instanceof Error ? err.message : "Xac minh that bai.",
+        message: err instanceof Error ? err.message : "Xác minh thất bại.",
       });
       setVerifyResultFor(attachment.id);
     } finally {
@@ -145,7 +145,7 @@ export default function AttachmentPreview({
 
       {signedContainer && (
         <div className="mt-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
-          <div className="font-semibold mb-1">Chu ky so / Digital signature</div>
+          <div className="mb-1 font-semibold">Chữ ký số / Digital signature</div>
           <div>Signer: {signedContainer.signer || "unknown"}</div>
           <div>Signed at: {signedContainer.signed_at || "-"}</div>
           <div>Algorithm: Ed25519</div>
@@ -169,7 +169,7 @@ export default function AttachmentPreview({
               }}
               className="rounded border border-blue-400/50 px-2 py-1 text-blue-100 disabled:opacity-60"
             >
-              Xac minh chu ky
+              Xác minh chữ ký
             </button>
             <button
               type="button"
@@ -182,7 +182,7 @@ export default function AttachmentPreview({
               }
               className="rounded border border-blue-400/50 px-2 py-1 text-blue-100"
             >
-              Tai signed container
+              Tải signed container
             </button>
             {activeVerifyResult?.valid && activeVerifyResult.file?.content_b64 && (
               <button
@@ -196,7 +196,7 @@ export default function AttachmentPreview({
                 }
                 className="rounded border border-emerald-400/50 px-2 py-1 text-emerald-100"
               >
-                Tai file goc
+                Tải file gốc
               </button>
             )}
           </div>

@@ -54,6 +54,7 @@ class WebSocketService {
   private connectTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private isConnected = false;
   private shouldReconnect = true;
+  private hasLoggedCurrentOutage = false;
 
   private readonly packetHandlers = new Map<string, Set<PacketHandler>>();
   private readonly connectionHandlers: ConnectionHandler[] = [];
@@ -99,6 +100,7 @@ class WebSocketService {
           this.clearConnectTimer();
 
           this.isConnected = true;
+          this.hasLoggedCurrentOutage = false;
           this.reconnectAttempts = 0;
           this.reconnectDelay = this.config.reconnectBaseDelayMs;
 
@@ -153,7 +155,10 @@ class WebSocketService {
         this.socket.onerror = (event: Event) => {
           this.clearConnectTimer();
           const errorMessage = `WebSocket connection failed: ${this.config.url}. Ensure WS server is running.`;
-          console.error("[WS] error event:", event);
+          if (!this.hasLoggedCurrentOutage) {
+            this.hasLoggedCurrentOutage = true;
+            console.warn("[WS] error event:", event);
+          }
 
           store.setError(errorMessage);
           store.setConnecting(false);
