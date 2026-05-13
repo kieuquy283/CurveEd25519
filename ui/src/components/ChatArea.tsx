@@ -16,7 +16,8 @@ import DynamicWatermark from "@/components/privacy/DynamicWatermark";
 import { dispatchPrivacyHideAll } from "@/hooks/usePrivacyReveal";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import VerifyConnectionRequiredModal from "@/components/connection/VerifyConnectionRequiredModal";
-import { ConnectionStatusResponse, getConnectionStatus } from "@/services/connections";
+import { ConnectionStatusResponse, normalizeEmail } from "@/services/connections";
+import { useConnectionStatusStore } from "@/store/useConnectionStatusStore";
 
 interface ChatAreaProps {
   conversationId: string;
@@ -32,8 +33,11 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
   const updateConversation = useChatStore((s) => s.updateConversation);
   const currentUser = useAuthStore((s) => s.currentUser);
   const prefs = useSettingsStore((s) => s.prefs);
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatusResponse | null>(null);
   const [connectionStatusOpen, setConnectionStatusOpen] = useState(false);
+  const refreshConnectionStatus = useConnectionStatusStore((s) => s.refreshConnectionStatus);
+  const getConnectionStatusForPair = useConnectionStatusStore((s) => s.getConnectionStatusForPair);
+  const loadingByPair = useConnectionStatusStore((s) => s.loadingByPair);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatusResponse | null>(null);
 
   const activeConversation = conversations.get(conversationId);
   const messages = useChatStore((s) => s.messages.get(conversationId) ?? EMPTY_MESSAGES);
@@ -61,15 +65,35 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
   }, [prefs.hideOnWindowBlur, prefs.privacyMode]);
 
   useEffect(() => {
-    const user = (currentUser?.email || currentUser?.id || "").trim().toLowerCase();
-    const peer = (activeConversation?.peerId || "").trim().toLowerCase();
+    if (!activeConversation) return;
+    const active = activeConversation;
+    const user = normalizeEmail(currentUser?.email || currentUser?.id || "");
+    const peer = normalizeEmail(active.peerId || "");
     if (!user || !peer) return;
-    getConnectionStatus(user, peer)
-      .then((status) => setConnectionStatus(status))
+    const cached = getConnectionStatusForPair(user, peer);
+    if (cached) setConnectionStatus(cached);
+    refreshConnectionStatus(user, peer)
+      .then((status) => {
+        setConnectionStatus(status);
+        const canonicalPeer = normalizeEmail(status.peer?.email || active.peerId);
+        updateConversation(active.id, {
+          peerId: canonicalPeer || active.peerId,
+          peerName: status.peer?.display_name || active.peerName,
+        });
+      })
       .catch(() => {
-        setConnectionStatus(null);
+        if (!cached) setConnectionStatus(null);
       });
-  }, [activeConversation?.peerId, currentUser?.email, currentUser?.id]);
+  }, [
+    activeConversation?.id,
+    activeConversation?.peerId,
+    activeConversation?.peerName,
+    currentUser?.email,
+    currentUser?.id,
+    getConnectionStatusForPair,
+    refreshConnectionStatus,
+    updateConversation,
+  ]);
 
   const attachments = useMemo(() => {
     return messages.flatMap((m) => {
@@ -107,6 +131,27 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
     return <div className="flex h-full items-center justify-center text-sm text-zinc-500">Conversation not found</div>;
   }
 
+  const loadingStatus = (() => {
+    if (!activeConversation) return false;
+    const user = normalizeEmail(currentUser?.email || currentUser?.id || "");
+    const peer = normalizeEmail(activeConversation.peerId || "");
+    const key = [user, peer].sort().join("::");
+    return Boolean(loadingByPair[key]);
+  })();
+
+  const applyStatus = (status: ConnectionStatusResponse) => {
+    if (!activeConversation) {
+      setConnectionStatus(status);
+      return;
+    }
+    setConnectionStatus(status);
+    const canonicalPeer = normalizeEmail(status.peer?.email || activeConversation.peerId);
+    updateConversation(activeConversation.id, {
+      peerId: canonicalPeer || activeConversation.peerId,
+      peerName: status.peer?.display_name || activeConversation.peerName,
+    });
+  };
+
   return (
     <div className="flex h-full min-w-0 gap-3 lg:gap-4">
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950/45 backdrop-blur-xl">
@@ -116,7 +161,9 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
           infoPanelOpen={infoPanelOpen}
           onToggleInfoPanel={() => setInfoPanelOpen((v) => !v)}
           connectionStatusLabel={
-            connectionStatus?.reason === "verified_connection"
+            loadingStatus
+              ? "Đang kiểm tra kết nối..."
+              : connectionStatus?.reason === "verified_connection"
               ? "Đã kết nối an toàn"
               : connectionStatus?.reason === "pending_connection"
                 ? "Đang chờ xác minh"
@@ -144,8 +191,9 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
         <MessageComposer
           conversationId={conversationId}
           connectionStatus={connectionStatus}
-          onConnectionStatusChange={setConnectionStatus}
+          onConnectionStatusChange={applyStatus}
           onOpenConnectionStatusModal={() => setConnectionStatusOpen(true)}
+          refreshConnectionStatus={refreshConnectionStatus}
         />
       </div>
       <VerifyConnectionRequiredModal
@@ -154,7 +202,9 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
         status={connectionStatus}
         currentUser={(currentUser?.email || currentUser?.id || "").trim().toLowerCase()}
         peerIdentifier={activeConversation.peerId}
-        onStatusUpdated={setConnectionStatus}
+        onStatusRefresh={applyStatus}
+        onVerified={applyStatus}
+        refreshStatus={refreshConnectionStatus}
       />
 
       {infoPanelOpen && (

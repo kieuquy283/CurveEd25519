@@ -15,7 +15,7 @@ import {
 } from "@/services/conversationCrypto";
 import { buildApiBaseCandidates } from "@/config/env";
 import { ChatMessage, SignedFileContainer, VerificationResult } from "@/types/models";
-import { ConnectionStatusResponse, getConnectionStatus } from "@/services/connections";
+import { ConnectionStatusResponse } from "@/services/connections";
 
 import { buildPacketId, buildTimestamp, PacketType } from "@/types/packets";
 
@@ -24,6 +24,7 @@ interface Props {
   connectionStatus?: ConnectionStatusResponse | null;
   onConnectionStatusChange?: (status: ConnectionStatusResponse) => void;
   onOpenConnectionStatusModal?: () => void;
+  refreshConnectionStatus: (userEmail: string, peerIdentifier: string) => Promise<ConnectionStatusResponse>;
 }
 
 interface PendingFile {
@@ -76,6 +77,7 @@ export function MessageComposer({
   connectionStatus,
   onConnectionStatusChange,
   onOpenConnectionStatusModal,
+  refreshConnectionStatus,
 }: Props) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -242,7 +244,7 @@ export function MessageComposer({
     const file = pendingFile;
     const trimmed = text.trim();
     if ((!trimmed && !file) || sending) return;
-    const latestStatus = await getConnectionStatus(currentUserId, conversationId).catch(() => connectionStatus ?? null);
+    const latestStatus = await refreshConnectionStatus(currentUserId, conversationId).catch(() => connectionStatus ?? null);
     if (!latestStatus || !latestStatus.can_send_encrypted) {
       if (latestStatus) onConnectionStatusChange?.(latestStatus);
       onOpenConnectionStatusModal?.();
@@ -363,7 +365,7 @@ export function MessageComposer({
       console.error("[Composer] Backend crypto API unreachable or encrypt failed:", error);
       const detail = error instanceof Error ? error.message : "Không kết nối được backend crypto API. Vui lòng thử lại.";
       if (detail.includes("verified_connection_required")) {
-        const refreshed = await getConnectionStatus(currentUserId, conversationId).catch(() => null);
+        const refreshed = await refreshConnectionStatus(currentUserId, conversationId).catch(() => null);
         if (refreshed) onConnectionStatusChange?.(refreshed);
         onOpenConnectionStatusModal?.();
       } else {
@@ -385,6 +387,7 @@ export function MessageComposer({
     connectionStatus,
     onConnectionStatusChange,
     onOpenConnectionStatusModal,
+    refreshConnectionStatus,
   ]);
 
   return (

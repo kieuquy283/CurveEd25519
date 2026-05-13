@@ -2521,3 +2521,92 @@ Build / validation:
 Notes:
 - Existing encryption, websocket, persistence, notifications, trusted contacts, and signed-file flows were preserved.
 - Connection verification is now a guided modal-first UX rather than a blocking browser alert.
+
+## 2026-05-13 - Fix Unstable Verified Connection State After Re-check
+
+Status: DONE
+
+Root cause fixed:
+- Connection verification state was split across local component state and ad-hoc refresh calls, causing stale or mismatched status after "Kiểm tra lại" and modal close.
+- Peer identity normalization could drift (identifier vs canonical email), causing key mismatch in lookups.
+
+What changed:
+1. Centralized frontend connection status source of truth
+- Added store: `ui/src/store/useConnectionStatusStore.ts`
+- Store structure:
+  - `connectionStatusByPair`
+  - `loadingByPair`
+  - `errorByPair`
+- Pair key normalization:
+  - `normalizeEmail(...)`
+  - `makeConnectionPairKey(user, peer)`
+- Added store actions:
+  - `setConnectionStatus(...)`
+  - `getConnectionStatusForPair(...)`
+  - `refreshConnectionStatus(...)`
+  - `clearForUser(...)`
+
+2. Normalized identity helpers and pair-key usage
+- Updated `ui/src/services/connections.ts` with:
+  - `normalizeEmail`
+  - `makeConnectionPairKey`
+- Ensures status caching and retrieval use normalized canonical pair keys.
+
+3. Modal refresh now updates global state consistently
+- Updated `ui/src/components/connection/VerifyConnectionRequiredModal.tsx`
+- "Kiểm tra lại" now uses centralized `refreshStatus(...)` callback.
+- Request/verify actions now also refresh status and propagate updates.
+- Added callbacks:
+  - `onStatusRefresh`
+  - `onVerified`
+- Closing modal no longer clears or downgrades verified state.
+
+4. Chat area now derives status from centralized store
+- Updated `ui/src/components/ChatArea.tsx`
+- On conversation open:
+  - loads cached pair status if present
+  - refreshes from backend source-of-truth
+  - updates active conversation peer identity/name with canonical backend peer email/display name
+- Header status label now uses centralized status + loading state:
+  - `Đang kiểm tra kết nối...`
+  - `Đã kết nối an toàn`
+  - `Đang chờ xác minh`
+  - `Chưa xác minh`
+  - fallback `Không kiểm tra được kết nối`
+
+5. Send guard now uses fresh backend status through centralized refresher
+- Updated `ui/src/components/MessageComposer.tsx`
+- Before send, calls `refreshConnectionStatus(...)` each time.
+- If not verified:
+  - opens modal
+  - preserves input/file draft
+  - does not call encryption
+  - does not mark message sent
+- If backend rejects with verified-connection required, triggers refresh + modal path again.
+
+6. Header status wording de-conflicted from network semantics
+- Updated `ui/src/components/ChatHeader.tsx`
+- Removed implicit use of peer online state for crypto trust label.
+- Prevents confusion between crypto trust status and websocket connectivity.
+
+Backend consistency:
+- Existing backend status + encryption-trusted checks remain in place.
+- No regressions introduced to verified-connection enforcement.
+
+Files changed:
+- `ui/src/store/useConnectionStatusStore.ts` (new)
+- `ui/src/services/connections.ts`
+- `ui/src/components/connection/VerifyConnectionRequiredModal.tsx`
+- `ui/src/components/ChatArea.tsx`
+- `ui/src/components/MessageComposer.tsx`
+- `ui/src/components/ChatHeader.tsx`
+
+Validation run:
+- Frontend build: `cd ui && npm run build` -> success.
+- Backend compile: `python -m compileall app server.py` -> success.
+
+Expected user-visible result:
+- After modal re-check shows verified/green, closing modal keeps verified state stable.
+- Header remains "Đã kết nối an toàn".
+- Send (text/file/signed file) remains allowed and stable.
+- No stale fallback to unverified due to local state drift.

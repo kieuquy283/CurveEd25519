@@ -11,6 +11,14 @@ async function parseOrThrow(response: Response) {
   return data;
 }
 
+export function normalizeEmail(value: string): string {
+  return (value || "").trim().toLowerCase();
+}
+
+export function makeConnectionPairKey(userEmail: string, peerEmail: string): string {
+  return [normalizeEmail(userEmail), normalizeEmail(peerEmail)].sort().join("::");
+}
+
 export type ConnectionStatusReason =
   | "verified_connection"
   | "missing_connection"

@@ -11,7 +11,9 @@ interface Props {
   status: ConnectionStatusResponse | null;
   currentUser: string;
   peerIdentifier: string;
-  onStatusUpdated?: (status: ConnectionStatusResponse) => void;
+  onStatusRefresh?: (status: ConnectionStatusResponse) => void;
+  onVerified?: (status: ConnectionStatusResponse) => void;
+  refreshStatus: (user: string, peer: string) => Promise<ConnectionStatusResponse>;
 }
 
 function StatusItem({ ok, label, pending }: { ok: boolean; label: string; pending?: boolean }) {
@@ -35,7 +37,9 @@ export default function VerifyConnectionRequiredModal({
   status,
   currentUser,
   peerIdentifier,
-  onStatusUpdated,
+  onStatusRefresh,
+  onVerified,
+  refreshStatus,
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState("");
@@ -86,6 +90,8 @@ export default function VerifyConnectionRequiredModal({
                   setMsg("");
                   try {
                     const res = await requestConnection({ from_user: currentUser, to: peerIdentifier });
+                    const updated = await refreshStatus(currentUser, peerIdentifier);
+                    onStatusRefresh?.(updated);
                     setMsg(res?.message || "Đã gửi yêu cầu kết nối.");
                   } catch (error) {
                     setMsg(error instanceof Error ? error.message : "Không thể gửi yêu cầu kết nối.");
@@ -116,7 +122,10 @@ export default function VerifyConnectionRequiredModal({
                     setMsg("");
                     try {
                       await verifyConnection({ connection_id: status.connection.id, user: currentUser, code: code.trim() });
-                      setMsg("Kết nối đã xác minh.");
+                      const updated = await refreshStatus(currentUser, peerIdentifier);
+                      onStatusRefresh?.(updated);
+                      if (updated.can_send_encrypted) onVerified?.(updated);
+                      setMsg(updated.can_send_encrypted ? "Kết nối đã xác minh." : "Đã gửi xác minh, vui lòng kiểm tra lại.");
                     } catch (error) {
                       setMsg(error instanceof Error ? error.message : "Xác minh thất bại.");
                     } finally {
@@ -137,11 +146,11 @@ export default function VerifyConnectionRequiredModal({
                 setBusy(true);
                 setMsg("");
                 try {
-                  const { getConnectionStatus } = await import("@/services/connections");
-                  const updated = await getConnectionStatus(currentUser, peerIdentifier);
-                  onStatusUpdated?.(updated);
+                  const updated = await refreshStatus(currentUser, peerIdentifier);
+                  onStatusRefresh?.(updated);
                   if (updated.can_send_encrypted) {
                     setMsg("Đã kết nối an toàn. Bạn có thể gửi tin nhắn mã hóa.");
+                    onVerified?.(updated);
                   }
                 } catch (error) {
                   setMsg(error instanceof Error ? error.message : "Không thể kiểm tra lại kết nối.");

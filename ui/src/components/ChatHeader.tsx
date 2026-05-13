@@ -49,7 +49,7 @@ export function ChatHeader({
             className="mt-0.5 flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200"
           >
             <Circle size={7} className="fill-emerald-500 text-emerald-500" />
-            <span>{connectionStatusLabel || (conversation.isOnline ? "Đã kết nối an toàn" : "Không kiểm tra được kết nối")}</span>
+            <span>{connectionStatusLabel || "Không kiểm tra được kết nối"}</span>
           </button>
         </div>
       </div>
