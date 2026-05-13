@@ -7,6 +7,11 @@ type AttachmentLike = {
   url?: string;
   dataBase64?: string;
   content_b64?: string;
+  metadata?: Record<string, unknown>;
+  signed_file?: Record<string, unknown>;
+  signed_file_json?: Record<string, unknown>;
+  type?: string;
+  kind?: string;
 };
 
 function decodeDataUrl(url: string): string | null {
@@ -51,11 +56,27 @@ function normalizeSignedFile(obj: Record<string, unknown>): SignedFileContainer 
   };
 }
 
+function parseCandidate(candidate: unknown): SignedFileContainer | null {
+  if (!candidate || typeof candidate !== "object") return null;
+  return normalizeSignedFile(candidate as Record<string, unknown>);
+}
+
 export function detectSignedFileContainer(attachment: AttachmentLike): SignedFileContainer | null {
   const fileName = (attachment.fileName || "").toLowerCase();
   const mimeType = (attachment.mimeType || "").toLowerCase();
+  const directCandidate =
+    parseCandidate(attachment.signed_file_json) ||
+    parseCandidate(attachment.signed_file) ||
+    parseCandidate(attachment.metadata?.signed_file_json) ||
+    parseCandidate(attachment.metadata?.signed_file);
+  if (directCandidate) return directCandidate;
+
+  const explicitKind = String(attachment.type || attachment.kind || attachment.metadata?.type || "").toLowerCase();
   const looksLikeSignedContainer =
-    fileName.endsWith(".signed.json") || mimeType.includes("application/json");
+    explicitKind === "signed-file" ||
+    fileName.endsWith(".signed.json") ||
+    fileName.includes(".signed") ||
+    mimeType.includes("application/json");
 
   const fromDirect = attachment.content_b64 || attachment.dataBase64 || "";
   let payloadBase64 = fromDirect.trim();

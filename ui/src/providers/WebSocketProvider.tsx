@@ -24,30 +24,13 @@ import {
 
 import { ChatMessage } from "@/types/models";
 import { saveConversationMessage } from "@/services/conversations";
-
-interface ParsedAttachment {
-  id: string;
-  fileName: string;
-  mimeType: string;
-  size: number;
-  dataBase64?: string;
-  url?: string;
-  uploaded: boolean;
-  crypto?: {
-    encrypted?: boolean;
-    decrypted?: boolean;
-    encryption?: string;
-    keyExchange?: string;
-    kdf?: string;
-    signature?: string;
-  };
-}
+import { normalizeChatAttachment } from "@/lib/normalizeAttachment";
 
 function parseIncomingEnvelope(rawText: string) {
 
   let text = rawText;
   let type: "text" | "file" = "text";
-  let attachments: ParsedAttachment[] = [];
+  let attachments: ChatMessage["attachments"] = [];
   let file: Record<string, unknown> | undefined;
 
   try {
@@ -116,18 +99,19 @@ function parseIncomingEnvelope(rawText: string) {
           ? parsed.text
           : `ðŸ“Ž ${fileName}`;
 
-      attachments = [
-        {
-          id,
-          fileName,
-          mimeType,
-          size,
-          dataBase64,
-          url,
-          uploaded: true,
-          crypto: cryptoInfo as ParsedAttachment["crypto"],
-        },
-      ];
+      const normalized = normalizeChatAttachment({
+        ...attachment,
+        id,
+        fileName,
+        mimeType,
+        size,
+        dataBase64,
+        content_b64: dataBase64,
+        url,
+        uploaded: true,
+        crypto: cryptoInfo,
+      });
+      attachments = normalized ? [normalized] : [];
 
       file = {
         id,
@@ -275,8 +259,13 @@ export function WebSocketProvider({
             ciphertext_envelope: envelope,
             plaintext_preview: parsedEnvelope.text.slice(0, 200),
             attachment_json:
-              parsedEnvelope.attachments.length > 0
-                ? (parsedEnvelope.attachments[0] as unknown as Record<string, unknown>)
+              parsedEnvelope.attachments && parsedEnvelope.attachments.length > 0
+                ? ({
+                    ...(parsedEnvelope.attachments[0] as unknown as Record<string, unknown>),
+                    metadata:
+                      (parsedEnvelope.attachments[0]?.metadata as Record<string, unknown> | undefined) ||
+                      undefined,
+                  } as Record<string, unknown>)
                 : undefined,
             crypto_debug:
               (payload.debug as Record<string, unknown> | undefined) || undefined,

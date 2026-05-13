@@ -2679,3 +2679,47 @@ Files changed:
 
 Build result:
 - Frontend: `cd ui && npm run build` -> success.
+
+## 2026-05-13 - Signed File Attachment Rendering Consistency
+
+Status: DONE
+
+What was fixed:
+- Fixed signed-file card rendering mismatch so receiver/reloaded messages no longer fall back to plain filename-only card.
+- Added canonical attachment normalization used across send, receive, and hydration paths.
+
+Implementation details:
+- Added `ui/src/lib/normalizeAttachment.ts` with:
+  - `detectSignedFile(raw)`
+  - `normalizeChatAttachment(raw)`
+  - signed-container extraction from direct metadata and base64 JSON content.
+- Updated signed-file detection in `ui/src/services/signedFile.ts`:
+  - recognizes `type/kind=signed-file`, `.signed.json` filename heuristics,
+  - and `metadata.signed_file_json` / `signed_file` fields.
+- Updated outgoing signed-file payload in `ui/src/components/MessageComposer.tsx`:
+  - persists `type/kind=signed-file`, `signed_file_json`, `signature`, `original_file`, and `content_b64`.
+- Updated incoming websocket mapping in `ui/src/providers/WebSocketProvider.tsx`:
+  - normalizes attachment before rendering/persisting.
+- Updated conversation message hydration in `ui/src/components/Sidebar.tsx`:
+  - normalizes `attachment_json` when loading from conversations API.
+- Updated `ui/src/components/attachments/AttachmentBubble.tsx` to normalize message/file fallback attachments.
+- Updated `ui/src/components/attachments/AttachmentPreview.tsx`:
+  - renders digital-signature section for metadata-detected signed files,
+  - supports minimal signed-file card for legacy records,
+  - keeps verify/download buttons with graceful disabled state when container is missing.
+
+Backward compatibility behavior:
+- Old records with `.signed.json` filename now render signed-file UI block (minimal if full container unavailable).
+- If full container metadata is missing, UI shows a clear message instead of ambiguous plain-file card.
+
+Files changed:
+- `ui/src/lib/normalizeAttachment.ts` (new)
+- `ui/src/services/signedFile.ts`
+- `ui/src/components/MessageComposer.tsx`
+- `ui/src/providers/WebSocketProvider.tsx`
+- `ui/src/components/Sidebar.tsx`
+- `ui/src/components/attachments/AttachmentBubble.tsx`
+- `ui/src/components/attachments/AttachmentPreview.tsx`
+
+Build/test result:
+- Frontend build: `cd ui && npm run build` -> success.

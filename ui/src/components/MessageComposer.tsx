@@ -18,6 +18,7 @@ import { ChatMessage, SignedFileContainer, VerificationResult } from "@/types/mo
 import { ConnectionStatusResponse } from "@/services/connections";
 import VerificationResultOverlay from "@/components/ui/VerificationResultOverlay";
 import { useVerificationOverlay } from "@/hooks/useVerificationOverlay";
+import { normalizeChatAttachment } from "@/lib/normalizeAttachment";
 
 import { buildPacketId, buildTimestamp, PacketType } from "@/types/packets";
 
@@ -73,6 +74,21 @@ function downloadBase64File(filename: string, mimeType: string, contentB64: stri
   anchor.href = url;
   anchor.download = filename;
   anchor.click();
+}
+
+function decodeSignedContainerFromBase64(base64: string): SignedFileContainer | null {
+  try {
+    const binary = atob(base64);
+    const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+    const text = new TextDecoder().decode(bytes);
+    const parsed = JSON.parse(text) as SignedFileContainer;
+    if (parsed && parsed.type === "signed-file" && parsed.filename && parsed.content_b64) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export function MessageComposer({
@@ -267,13 +283,39 @@ export function MessageComposer({
     const now = new Date().toISOString();
     const isFileMessage = Boolean(file);
 
+    const signedContainer =
+      file && file.file.name.toLowerCase().endsWith(".signed.json")
+        ? decodeSignedContainerFromBase64(file.dataBase64)
+        : null;
+
     const attachmentPayload = file
       ? {
           id: file.id,
+          type: signedContainer ? "signed-file" : "file",
+          kind: signedContainer ? "signed-file" : "file",
           fileName: file.file.name,
           mimeType: file.file.type || "application/octet-stream",
           size: file.file.size,
           dataBase64: file.dataBase64,
+          content_b64: file.dataBase64,
+          signed_file_json: signedContainer ?? undefined,
+          signed_file: signedContainer ?? undefined,
+          signature: signedContainer
+            ? {
+                signer: signedContainer.signer,
+                signed_at: signedContainer.signed_at,
+                algorithm: signedContainer.algorithm,
+                hash: signedContainer.hash,
+              }
+            : undefined,
+          original_file: signedContainer
+            ? {
+                filename: signedContainer.filename,
+                mime_type: signedContainer.mimeType,
+                size: signedContainer.size,
+                content_b64: signedContainer.content_b64,
+              }
+            : undefined,
           crypto: {
             encrypted: true,
             decrypted: true,
@@ -306,15 +348,10 @@ export function MessageComposer({
       attachments:
         file && attachmentPayload
           ? [
-              {
-                id: attachmentPayload.id,
-                fileName: attachmentPayload.fileName,
-                mimeType: attachmentPayload.mimeType,
-                size: attachmentPayload.size,
+              normalizeChatAttachment({
+                ...attachmentPayload,
                 url: `data:${attachmentPayload.mimeType};base64,${attachmentPayload.dataBase64}`,
-                uploaded: true,
-                crypto: attachmentPayload.crypto,
-              },
+              })!,
             ]
           : [],
     };

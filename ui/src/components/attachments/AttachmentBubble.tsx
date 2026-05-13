@@ -4,14 +4,16 @@ import { ChatMessage } from "@/types/models";
 import { useAttachmentStore } from "@/store/useAttachmentStore";
 import AttachmentPreview from "./AttachmentPreview";
 import UploadProgress from "./UploadProgress";
+import { normalizeChatAttachment } from "@/lib/normalizeAttachment";
 
 export default function AttachmentBubble({ message }: { message: ChatMessage }) {
   const storeAttachments =
     message.attachmentIds
       ?.map((id) => useAttachmentStore.getState().getAttachment(id))
       .filter(Boolean) ?? [];
-  const messageAttachments = message.attachments ?? [];
-  const fileAttachment =
+  const messageAttachments = (message.attachments ?? [])
+    .map((attachment) => normalizeChatAttachment(attachment) ?? attachment);
+  const fileAttachmentRaw =
     message.file && messageAttachments.length === 0
       ? [
           {
@@ -39,6 +41,8 @@ export default function AttachmentBubble({ message }: { message: ChatMessage }) 
           },
         ]
       : [];
+  const fileAttachment = fileAttachmentRaw
+    .map((attachment) => normalizeChatAttachment(attachment) ?? attachment);
   const attachments = [
     ...messageAttachments,
     ...fileAttachment,

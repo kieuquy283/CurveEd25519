@@ -27,6 +27,7 @@ import { listConversations, listConversationMessages } from "@/services/conversa
 import { listNotifications, markNotificationRead } from "@/services/notifications";
 import { useNotificationStore } from "@/store/useNotificationStore";
 import { getNickname } from "@/lib/conversationNicknames";
+import { normalizeChatAttachment } from "@/lib/normalizeAttachment";
 
 interface SidebarProps {
   onSelectConversation?: () => void;
@@ -196,7 +197,10 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
           text: String(m.plaintext_preview || ""),
           type: String(m.message_type || "text") as "text" | "file",
           envelope: (m.ciphertext_envelope as Record<string, unknown> | undefined) || undefined,
-          attachments: m.attachment_json && typeof m.attachment_json === "object" ? [m.attachment_json as never] : undefined,
+          attachments:
+            m.attachment_json && typeof m.attachment_json === "object"
+              ? [normalizeChatAttachment(m.attachment_json) || (m.attachment_json as never)]
+              : undefined,
           cryptoDebug: (m.crypto_debug as Record<string, unknown> | undefined) || undefined,
           timestamp: String(m.created_at || new Date().toISOString()),
           status: String(m.status || "delivered") as

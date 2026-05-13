@@ -36,6 +36,9 @@ export default function AttachmentPreview({
     () => detectSignedFileContainerFromAttachment(attachment),
     [attachment]
   );
+  const isSignedByMetadata = String((attachment.metadata?.type as string) || "").toLowerCase() === "signed-file"
+    || attachment.fileName.toLowerCase().endsWith(".signed.json")
+    || attachment.fileName.toLowerCase().includes(".signed");
 
   useEffect(() => {
     return () => {
@@ -221,11 +224,11 @@ export default function AttachmentPreview({
         />
       )}
 
-      {signedContainer && (
+      {(signedContainer || isSignedByMetadata) && (
         <div className="mt-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
           <div className="mb-1 font-semibold">Chữ ký số / Digital signature</div>
-          <div>Signer: {signedContainer.signer || "unknown"}</div>
-          <div>Signed at: {signedContainer.signed_at || "-"}</div>
+          <div>Signer: {signedContainer?.signer || String((attachment.metadata?.signature as Record<string, unknown> | undefined)?.signer || "unknown")}</div>
+          <div>Signed at: {signedContainer?.signed_at || String((attachment.metadata?.signature as Record<string, unknown> | undefined)?.signed_at || "-")}</div>
           <div>Algorithm: Ed25519</div>
           <div>Hash: SHA-256</div>
           <div>
@@ -241,28 +244,30 @@ export default function AttachmentPreview({
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={verifying}
+              disabled={verifying || !signedContainer}
               onClick={async () => {
                 await runVerify();
               }}
-              className="rounded border border-blue-400/50 px-2 py-1 text-blue-100 disabled:opacity-60"
+              className="rounded border border-blue-400/50 px-2 py-1 text-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Xác minh chữ ký
             </button>
             <button
               type="button"
+              disabled={!signedContainer}
               onClick={() =>
+                signedContainer &&
                 downloadBase64(
                   `${signedContainer.filename}.signed.json`,
                   "application/json",
                   attachment.dataBase64 || attachment.content_b64 || ""
                 )
               }
-              className="rounded border border-blue-400/50 px-2 py-1 text-blue-100"
+              className="rounded border border-blue-400/50 px-2 py-1 text-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Tải signed container
             </button>
-            {activeVerifyResult?.valid && activeVerifyResult.file?.content_b64 && (
+            {activeVerifyResult?.valid && activeVerifyResult.file?.content_b64 && signedContainer && (
               <button
                 type="button"
                 onClick={() =>
@@ -278,6 +283,11 @@ export default function AttachmentPreview({
               </button>
             )}
           </div>
+          {!signedContainer && (
+            <div className="mt-2 text-[11px] text-blue-200/80">
+              Signed container metadata unavailable. Re-open/decrypt message to verify.
+            </div>
+          )}
         </div>
       )}
     </div>
