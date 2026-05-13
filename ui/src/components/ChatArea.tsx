@@ -168,7 +168,7 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
               : connectionStatus?.reason === "pending_connection"
                 ? "Đang chờ xác minh"
                 : connectionStatus?.reason
-                  ? "Chưa xác minh"
+                  ? "Chưa kết nối"
                   : "Không kiểm tra được kết nối"
           }
           onOpenConnectionSecurity={() => setConnectionStatusOpen(true)}
@@ -190,6 +190,7 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
 
         <MessageComposer
           conversationId={conversationId}
+          peerIdentifier={activeConversation.peerId}
           connectionStatus={connectionStatus}
           onConnectionStatusChange={applyStatus}
           onOpenConnectionStatusModal={() => setConnectionStatusOpen(true)}

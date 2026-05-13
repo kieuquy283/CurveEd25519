@@ -2610,3 +2610,47 @@ Expected user-visible result:
 - Header remains "Đã kết nối an toàn".
 - Send (text/file/signed file) remains allowed and stable.
 - No stale fallback to unverified due to local state drift.
+
+## 2026-05-13 - Connection Send Model Fix (Verified Connection Is Sufficient)
+
+Status: DONE
+
+Bug fixed:
+- Users with already verified `app_connections.status = "verified"` were still blocked by the pre-send verification modal.
+
+Primary root cause:
+- Frontend send guard used `conversationId` (conversation hash id) as peer identifier for status/encryption checks, instead of canonical peer email/user id.
+- This caused false negatives in connection status lookup.
+
+What changed:
+1. Frontend send guard now uses canonical peer identity
+- `MessageComposer` now accepts `peerIdentifier` and uses it for:
+  - `refreshConnectionStatus(user, peerIdentifier)`
+  - `encryptConversationMessage(... recipient: peerIdentifier ...)`
+  - `saveConversationMessage(... receiver_email: peerIdentifier ...)`
+- Verified connections now send immediately without extra modal.
+
+2. Chat area passes canonical peer identifier into composer
+- `ChatArea` now passes `activeConversation.peerId` to composer as `peerIdentifier`.
+
+3. Backend trusted lookup aligned with "verified is enough" model
+- Updated `ConnectionService.get_verified_connection(...)`:
+  - Verified connection + both profiles/public keys present => trusted.
+  - Snapshot is auto-repaired/updated (public metadata only), instead of forcing re-verification.
+- Updated `ConnectionService.get_connection_status(...)` to use `get_verified_connection(...)` consistency for `can_send_encrypted`/reason.
+
+4. UI status wording refinement
+- Crypto trust badge fallback changed from `Chưa xác minh` to `Chưa kết nối`.
+
+Files changed:
+- `ui/src/components/MessageComposer.tsx`
+- `ui/src/components/ChatArea.tsx`
+- `app/services/connection_service.py`
+
+Build/test:
+- Frontend: `cd ui && npm run build` -> success.
+- Backend: `python -m compileall app server.py` -> success.
+
+Resulting behavior:
+- If `app_connections.status=verified` (symmetric pair) and profiles/keys exist, send text/file/signed-file proceeds directly.
+- Verify modal appears only for missing/pending/new-user connection scenarios.

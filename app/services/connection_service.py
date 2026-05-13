@@ -245,17 +245,32 @@ class ConnectionService:
     def get_verified_connection(self, user_a: str, user_b: str) -> dict[str, Any] | None:
         a = self._resolve_user(user_a)
         b = self._resolve_user(user_b)
-        conn = self._find_pair(self._load_connections(), a["email"], b["email"])
+        rows = self._load_connections()
+        conn = self._find_pair(rows, a["email"], b["email"])
         if not conn or conn.get("status") != "verified":
             return None
 
-        # If key snapshot no longer matches current keys, require re-verification.
+        # Verified connection is sufficient if both public key profiles are present.
+        # Repair stale snapshots in place instead of forcing an extra verification UX.
         a_profile = self._profile_for_email(a["email"])
         b_profile = self._profile_for_email(b["email"])
-        keys_ok = self._keys_match_snapshot(conn, a["email"], a_profile) and self._keys_match_snapshot(conn, b["email"], b_profile)
-        if not keys_ok:
+        a_has_keys = bool((a_profile.get("x25519") or {}).get("public_key")) and bool((a_profile.get("ed25519") or {}).get("public_key"))
+        b_has_keys = bool((b_profile.get("x25519") or {}).get("public_key")) and bool((b_profile.get("ed25519") or {}).get("public_key"))
+        if not (a_has_keys and b_has_keys):
             return None
 
+        requester = self._resolve_user(conn["requester_email"])
+        recipient = self._resolve_user(conn["recipient_email"])
+        self._refresh_key_snapshot(conn, requester, recipient, self._profile_for_email(requester["email"]), self._profile_for_email(recipient["email"]))
+        conn["connection_json"] = self._build_connection_json(
+            requester=requester,
+            recipient=recipient,
+            requester_profile=self._profile_for_email(requester["email"]),
+            recipient_profile=self._profile_for_email(recipient["email"]),
+            verified_at=conn.get("verified_at"),
+            trusted=True,
+        )
+        self._save_connections(rows)
         return conn
 
     def get_connection_status(self, *, user: str, peer: str) -> dict[str, Any]:
@@ -308,6 +323,7 @@ class ConnectionService:
         conn = self._find_pair(self._load_connections(), user_info["email"], peer_info["email"])
         conn_status = str(conn.get("status") or "none") if conn else "none"
         trusted = bool(conn and conn_status == "verified")
+        verified_conn = self.get_verified_connection(user_info["email"], peer_info["email"]) if conn_status == "verified" else None
 
         if not peer_verified:
             reason = "peer_not_verified"
@@ -317,6 +333,8 @@ class ConnectionService:
             reason = "missing_connection"
         elif conn_status != "verified":
             reason = "pending_connection"
+        elif not verified_conn:
+            reason = "missing_crypto_profile"
         else:
             reason = "verified_connection"
 

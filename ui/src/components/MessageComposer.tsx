@@ -21,6 +21,7 @@ import { buildPacketId, buildTimestamp, PacketType } from "@/types/packets";
 
 interface Props {
   conversationId: string;
+  peerIdentifier: string;
   connectionStatus?: ConnectionStatusResponse | null;
   onConnectionStatusChange?: (status: ConnectionStatusResponse) => void;
   onOpenConnectionStatusModal?: () => void;
@@ -74,6 +75,7 @@ function downloadBase64File(filename: string, mimeType: string, contentB64: stri
 
 export function MessageComposer({
   conversationId,
+  peerIdentifier,
   connectionStatus,
   onConnectionStatusChange,
   onOpenConnectionStatusModal,
@@ -141,10 +143,10 @@ export function MessageComposer({
     async (plaintext: string) =>
       encryptConversationMessage({
         sender: getCurrentUserId(),
-        recipient: conversationId,
+        recipient: peerIdentifier,
         plaintext,
       }),
-    [conversationId]
+    [peerIdentifier]
   );
 
   const handlePickFile = useCallback(() => {
@@ -244,7 +246,7 @@ export function MessageComposer({
     const file = pendingFile;
     const trimmed = text.trim();
     if ((!trimmed && !file) || sending) return;
-    const latestStatus = await refreshConnectionStatus(currentUserId, conversationId).catch(() => connectionStatus ?? null);
+    const latestStatus = await refreshConnectionStatus(currentUserId, peerIdentifier).catch(() => connectionStatus ?? null);
     if (!latestStatus || !latestStatus.can_send_encrypted) {
       if (latestStatus) onConnectionStatusChange?.(latestStatus);
       onOpenConnectionStatusModal?.();
@@ -349,7 +351,7 @@ export function MessageComposer({
       try {
         await saveConversationMessage(conversationId, {
           sender_email: currentUserId,
-          receiver_email: conversationId,
+          receiver_email: peerIdentifier,
           packet_id: packet.packet_id,
           message_type: isFileMessage ? "file" : "text",
           ciphertext_envelope: encrypted.envelope as Record<string, unknown>,
@@ -365,7 +367,7 @@ export function MessageComposer({
       console.error("[Composer] Backend crypto API unreachable or encrypt failed:", error);
       const detail = error instanceof Error ? error.message : "Không kết nối được backend crypto API. Vui lòng thử lại.";
       if (detail.includes("verified_connection_required")) {
-        const refreshed = await refreshConnectionStatus(currentUserId, conversationId).catch(() => null);
+        const refreshed = await refreshConnectionStatus(currentUserId, peerIdentifier).catch(() => null);
         if (refreshed) onConnectionStatusChange?.(refreshed);
         onOpenConnectionStatusModal?.();
       } else {
@@ -378,6 +380,7 @@ export function MessageComposer({
     }
   }, [
     conversationId,
+    peerIdentifier,
     currentUserEmail,
     encryptMessage,
     pendingFile,
