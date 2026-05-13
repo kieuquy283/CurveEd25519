@@ -8,6 +8,8 @@ import {
   verifySignedContainer,
 } from "@/services/signedFile";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useSettingsStore } from "@/store/useSettingsStore";
+import { logAuditEvent } from "@/services/audit";
 
 export default function AttachmentPreview({
   attachment,
@@ -26,6 +28,7 @@ export default function AttachmentPreview({
   const verificationStartedRef = useRef<string | null>(null);
 
   const currentUserEmail = useAuthStore((s) => s.currentUser?.email);
+  const prefs = useSettingsStore((s) => s.prefs);
   const signedContainer = useMemo(
     () => detectSignedFileContainerFromAttachment(attachment),
     [attachment]
@@ -82,6 +85,20 @@ export default function AttachmentPreview({
   ]);
 
   const downloadBase64 = (filename: string, mimeType: string, base64: string) => {
+    if (prefs.privacyMode) {
+      void logAuditEvent({
+        event_type: "file_download_attempt",
+        user_email: currentUserEmail || undefined,
+        metadata: { filename, mimeType, source: "attachment_preview" },
+      });
+      const ok = window.confirm("Bạn đang tải file có thể chứa nội dung nhạy cảm. Tiếp tục?");
+      if (!ok) return;
+      void logAuditEvent({
+        event_type: "file_download_confirmed",
+        user_email: currentUserEmail || undefined,
+        metadata: { filename, mimeType, source: "attachment_preview" },
+      });
+    }
     const link = document.createElement("a");
     link.href = `data:${mimeType};base64,${base64}`;
     link.download = filename;
@@ -104,14 +121,60 @@ export default function AttachmentPreview({
         <div className="p-3 bg-slate-800 rounded-md text-sm">
           <div className="font-medium">{attachment.fileName}</div>
           <div className="text-xs text-zinc-400">PDF - {Math.round((attachment.size || 0) / 1024)} KB</div>
-          <a className="mt-2 inline-block text-xs text-blue-300 underline" href={url} download={attachment.fileName}>
+          <a
+            className="mt-2 inline-block text-xs text-blue-300 underline"
+            href={url}
+            download={attachment.fileName}
+            onClick={(event) => {
+              if (prefs.privacyMode) {
+                void logAuditEvent({
+                  event_type: "file_download_attempt",
+                  user_email: currentUserEmail || undefined,
+                  metadata: { filename: attachment.fileName, mimeType: attachment.mimeType, source: "attachment_link" },
+                });
+                const ok = window.confirm("Bạn đang tải file có thể chứa nội dung nhạy cảm. Tiếp tục?");
+                if (!ok) {
+                  event.preventDefault();
+                } else {
+                  void logAuditEvent({
+                    event_type: "file_download_confirmed",
+                    user_email: currentUserEmail || undefined,
+                    metadata: { filename: attachment.fileName, mimeType: attachment.mimeType, source: "attachment_link" },
+                  });
+                }
+              }
+            }}
+          >
             Open / Download
           </a>
         </div>
       ) : (
         <div className="p-3 bg-slate-800 rounded-md text-sm">
           <div>{attachment.fileName}</div>
-          <a className="mt-2 inline-block text-xs text-blue-300 underline" href={url} download={attachment.fileName}>
+          <a
+            className="mt-2 inline-block text-xs text-blue-300 underline"
+            href={url}
+            download={attachment.fileName}
+            onClick={(event) => {
+              if (prefs.privacyMode) {
+                void logAuditEvent({
+                  event_type: "file_download_attempt",
+                  user_email: currentUserEmail || undefined,
+                  metadata: { filename: attachment.fileName, mimeType: attachment.mimeType, source: "attachment_link" },
+                });
+                const ok = window.confirm("Bạn đang tải file có thể chứa nội dung nhạy cảm. Tiếp tục?");
+                if (!ok) {
+                  event.preventDefault();
+                } else {
+                  void logAuditEvent({
+                    event_type: "file_download_confirmed",
+                    user_email: currentUserEmail || undefined,
+                    metadata: { filename: attachment.fileName, mimeType: attachment.mimeType, source: "attachment_link" },
+                  });
+                }
+              }
+            }}
+          >
             Open / Download
           </a>
         </div>

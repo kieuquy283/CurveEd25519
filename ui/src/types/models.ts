@@ -304,6 +304,17 @@ export interface UiPreferences {
   wsEndpoint: string;
 
   localPeerId: string;
+
+  privacyMode: boolean;
+  watermarkEnabled: boolean;
+  blurMessages: boolean;
+  revealOnHover: boolean;
+  revealOnClick: boolean;
+  autoHideMs: number;
+  hideOnWindowBlur: boolean;
+  disablePlaintextCopy: boolean;
+  disableContextMenu: boolean;
+  auditLeakEvents: boolean;
 }
 
 export interface SignedFileContainer {

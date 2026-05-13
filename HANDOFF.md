@@ -2314,3 +2314,115 @@ Manual tests to run in browser:
 4. Open Signature dialog and confirm centered full-app modal; sign/download paths still work.
 5. Open Settings dialog and confirm centered full-app modal behavior.
 6. Check mobile width: modal remains within viewport and scrolls internally.
+
+## 2026-05-13 - Leak-Resistant View (Phase 1 prioritized)
+
+Status: DONE (Phase 1 complete, Phase 2 partial)
+
+Implemented (Phase 1):
+- Dynamic watermark overlay in chat message area.
+- Privacy Mode settings persisted in existing preferences store.
+- Message blur/reveal flow with auto-hide timeout.
+- Auto-hide all revealed content on window blur / tab inactive.
+- Encrypted-copy default for message copy operations.
+- Context-menu hardening on message/attachment area only when Privacy Mode is enabled.
+
+Implemented (Phase 2 partial):
+- Added lightweight audit event client service (`ui/src/services/audit.ts`) and wired best-effort audit events for:
+  - privacy_mode_enabled / privacy_mode_disabled
+  - message_revealed
+  - message_copied_encrypted
+- No backend audit endpoint or Supabase table migration added in this change set.
+
+Security limitation note (explicit):
+- This feature reduces accidental leakage and improves traceability with watermarking.
+- It cannot fully prevent screenshots, screen recording, DevTools extraction, malicious clients, or photos taken by another device.
+
+Files changed:
+- `ui/src/types/models.ts`
+- `ui/src/store/useSettingsStore.ts`
+- `ui/src/store/useUiStore.ts`
+- `ui/src/components/settings/SettingsDialog.tsx`
+- `ui/src/components/settings/PrivacySettings.tsx` (new)
+- `ui/src/components/privacy/DynamicWatermark.tsx` (new)
+- `ui/src/hooks/usePrivacyReveal.ts` (new)
+- `ui/src/lib/clipboardCrypto.ts` (new)
+- `ui/src/services/audit.ts` (new)
+- `ui/src/components/ChatArea.tsx`
+- `ui/src/components/MessageList.tsx`
+- `ui/src/components/MessageBubble.tsx`
+
+Behavior details:
+- Privacy settings defaults:
+  - privacyMode: false
+  - watermarkEnabled: true
+  - blurMessages: true
+  - revealOnHover: true
+  - revealOnClick: true
+  - autoHideMs: 5000
+  - hideOnWindowBlur: true
+  - disablePlaintextCopy: true
+  - disableContextMenu: true
+  - auditLeakEvents: true
+- Watermark content includes app name + user identifier + timestamp + conversation short id (+ peer name when available).
+- Copy inside message bubble now exports encrypted block format (no plaintext, no keys, no secrets).
+- Composer input and settings inputs are not affected by message-level context-menu/copy hardening.
+
+Build/test results:
+- Ran in `ui/`: `npm run build`
+- Result: success (Next.js 16.2.6, TypeScript passed, static pages generated).
+
+Manual verification checklist performed at code-path level:
+- Privacy Mode toggles persisted via settings store.
+- Message reveal auto-hides after configured timeout.
+- Revealed messages hide on `blur` / `visibilitychange`.
+- Copy handler in bubbles produces encrypted export and blocks plaintext default path.
+- Existing send/decrypt/crypto-trace flow remains intact (no payload format changes).
+
+## 2026-05-13 - Leak-Resistant View Continuation (3 next steps completed)
+
+Status: DONE
+
+Completed step 1: Backend audit endpoint + persistence
+- Added API route: `POST /api/audit/event`
+  - File: `app/api/audit_api.py`
+- Registered audit router in backend app:
+  - File: `server.py`
+- Added storage persistence for audit events in repository:
+  - File: `app/services/storage_repository.py`
+  - New file backend storage path: `data/audit_events.json`
+  - New repo method: `create_audit_event(...)`
+  - Supabase path (when enabled): `app_audit_events` table via upsert.
+
+Completed step 2: Privacy-mode download confirmation
+- Added confirmation gate for file downloads when Privacy Mode is enabled:
+  - Prompt: "Bạn đang tải file có thể chứa nội dung nhạy cảm. Tiếp tục?"
+- Added audit events for download attempt/confirm:
+  - `file_download_attempt`
+  - `file_download_confirmed`
+- File updated:
+  - `ui/src/components/attachments/AttachmentPreview.tsx`
+
+Completed step 3: View-once / expiration rendering (metadata-based)
+- Message bubble now checks optional metadata fields:
+  - `expires_at`
+  - `view_once`
+  - `viewed_at`
+- Render placeholders when applicable:
+  - "Tin nhắn đã hết hạn"
+  - "Tin nhắn xem một lần đã bị ẩn"
+- No fake destructive deletion added.
+- File updated:
+  - `ui/src/components/MessageBubble.tsx`
+
+Audit client integration refinement
+- Updated frontend audit service to call backend API base URL correctly:
+  - File: `ui/src/services/audit.ts`
+  - Uses configured API base instead of relative path.
+
+Build/test results
+- Frontend: `cd ui && npm run build` -> success.
+- Backend syntax compile: `python -m compileall app server.py` -> success.
+
+Additional note
+- Security limitation remains: cannot fully prevent screenshots/screen recording/external cameras/DevTools extraction once plaintext is displayed.

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+﻿from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import json
@@ -13,6 +13,7 @@ from app.api.auth_api import router as auth_router
 from app.api.connection_api import router as connection_router
 from app.api.chat_history_api import router as chat_history_router
 from app.api.notification_api import router as notification_router
+from app.api.audit_api import router as audit_router
 
 app = FastAPI(title="CurveApp API")
 
@@ -44,6 +45,7 @@ app.include_router(auth_router)
 app.include_router(connection_router)
 app.include_router(chat_history_router)
 app.include_router(notification_router)
+app.include_router(audit_router)
 
 ws_clients: dict[str, WebSocket] = {}
 
@@ -127,3 +129,5 @@ async def websocket_compat(websocket: WebSocket):
 @app.get("/")
 def health():
     return {"ok": True}
+
+

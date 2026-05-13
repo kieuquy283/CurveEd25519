@@ -33,6 +33,16 @@ const defaultPreferences: UiPreferences = {
   localPeerId:
     process.env.NEXT_PUBLIC_USER_ID ||
     "frontend",
+  privacyMode: false,
+  watermarkEnabled: true,
+  blurMessages: true,
+  revealOnHover: true,
+  revealOnClick: true,
+  autoHideMs: 5000,
+  hideOnWindowBlur: true,
+  disablePlaintextCopy: true,
+  disableContextMenu: true,
+  auditLeakEvents: true,
 };
 
 export const useUiStore = create<UiStore>()(

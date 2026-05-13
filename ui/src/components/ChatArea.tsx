@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -12,6 +12,9 @@ import { ChatMessage } from "@/types/models";
 import { ConversationInfoPanel } from "@/components/conversation/ConversationInfoPanel";
 import { patchConversationMetadata } from "@/services/conversations";
 import { getNickname, setNickname } from "@/lib/conversationNicknames";
+import DynamicWatermark from "@/components/privacy/DynamicWatermark";
+import { dispatchPrivacyHideAll } from "@/hooks/usePrivacyReveal";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
 interface ChatAreaProps {
   conversationId: string;
@@ -19,24 +22,17 @@ interface ChatAreaProps {
 }
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
-export function ChatArea({
-  conversationId,
-  onBack,
-}: ChatAreaProps) {
+
+export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
-  const conversations = useChatStore(
-    (s) => s.conversations
-  );
+  const conversations = useChatStore((s) => s.conversations);
   const updateConversation = useChatStore((s) => s.updateConversation);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const prefs = useSettingsStore((s) => s.prefs);
 
-  const activeConversation =
-    conversations.get(conversationId);
-
-  const messages = useChatStore((s) =>
-    s.messages.get(conversationId) ?? EMPTY_MESSAGES
-  );
+  const activeConversation = conversations.get(conversationId);
+  const messages = useChatStore((s) => s.messages.get(conversationId) ?? EMPTY_MESSAGES);
 
   useEffect(() => {
     if (!activeConversation || !currentUser?.email) return;
@@ -45,6 +41,20 @@ export function ChatArea({
       updateConversation(activeConversation.id, { peerName: nick });
     }
   }, [activeConversation, currentUser?.email, updateConversation]);
+
+  useEffect(() => {
+    if (!prefs.privacyMode || !prefs.hideOnWindowBlur) return;
+    const onWindowBlur = () => dispatchPrivacyHideAll();
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") dispatchPrivacyHideAll();
+    };
+    window.addEventListener("blur", onWindowBlur);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("blur", onWindowBlur);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [prefs.hideOnWindowBlur, prefs.privacyMode]);
 
   const attachments = useMemo(() => {
     return messages.flatMap((m) => {
@@ -60,28 +70,26 @@ export function ChatArea({
         },
       }));
       const fromFile = m.file
-        ? [{
-            id: `${m.id}-file`,
-            name: m.file.fileName || m.file.filename || "attachment",
-            type: m.file.mimeType || m.file.mime_type || "application/octet-stream",
-            size: m.file.size || 0,
-            timestamp: m.timestamp,
-            disabled: !(m.file.url || m.file.content_b64 || m.file.dataBase64),
-            onOpen: () => {
-              if (m.file?.url) window.open(m.file.url, "_blank", "noopener,noreferrer");
+        ? [
+            {
+              id: `${m.id}-file`,
+              name: m.file.fileName || m.file.filename || "attachment",
+              type: m.file.mimeType || m.file.mime_type || "application/octet-stream",
+              size: m.file.size || 0,
+              timestamp: m.timestamp,
+              disabled: !(m.file.url || m.file.content_b64 || m.file.dataBase64),
+              onOpen: () => {
+                if (m.file?.url) window.open(m.file.url, "_blank", "noopener,noreferrer");
+              },
             },
-          }]
+          ]
         : [];
       return [...direct, ...fromFile];
     });
   }, [messages]);
 
   if (!activeConversation) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-zinc-500">
-        Conversation not found
-      </div>
-    );
+    return <div className="flex h-full items-center justify-center text-sm text-zinc-500">Conversation not found</div>;
   }
 
   return (
@@ -98,15 +106,17 @@ export function ChatArea({
           Tin nhắn được mã hóa đầu cuối
         </div>
 
-        <MessageList
-          messages={messages}
-          conversationId={conversationId}
-          highlightedMessageId={highlightedMessageId}
+        <DynamicWatermark
+          enabled={prefs.privacyMode && prefs.watermarkEnabled}
+          userEmail={currentUser?.email || undefined}
+          userId={currentUser?.id || undefined}
+          conversationId={activeConversation.id}
+          peerName={activeConversation.peerName}
         />
 
-        <MessageComposer
-          conversationId={conversationId}
-        />
+        <MessageList messages={messages} conversationId={conversationId} highlightedMessageId={highlightedMessageId} />
+
+        <MessageComposer conversationId={conversationId} />
       </div>
 
       {infoPanelOpen && (
@@ -178,7 +188,9 @@ export function ChatArea({
                         },
                       },
                     });
-                  } catch {}
+                  } catch {
+                    // ignore sync failure
+                  }
                 }
               }}
               onClose={() => setInfoPanelOpen(false)}

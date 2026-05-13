@@ -6,6 +6,7 @@ import ConnectionSettings from "./ConnectionSettings";
 import ProfileSettings from "./ProfileSettings";
 import { useTheme } from "@/hooks/useTheme";
 import GlobalModal from "@/components/ui/GlobalModal";
+import PrivacySettings from "./PrivacySettings";
 
 export default function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   useTheme();
@@ -34,6 +35,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
           <div className="border-b border-white/10 md:border-b-0 md:border-r md:border-white/10">
             <AppearanceSettings />
             <NotificationSettings />
+            <PrivacySettings />
           </div>
           <div>
             <ProfileSettings />

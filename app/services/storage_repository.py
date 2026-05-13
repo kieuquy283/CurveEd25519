@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -21,6 +21,7 @@ class StorageRepository:
         self.conversations_path = self.data_dir / "conversations.json"
         self.messages_path = self.data_dir / "messages.json"
         self.notifications_path = self.data_dir / "notifications.json"
+        self.audit_events_path = self.data_dir / "audit_events.json"
         self.supabase_url = (os.getenv("SUPABASE_URL") or "").strip()
         self.supabase_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
         self.app_env = (os.getenv("APP_ENV") or "development").strip().lower()
@@ -51,6 +52,7 @@ class StorageRepository:
             self.conversations_path,
             self.messages_path,
             self.notifications_path,
+            self.audit_events_path,
         ]:
             if not p.exists():
                 p.write_text("[]", encoding="utf-8")
@@ -474,7 +476,23 @@ class StorageRepository:
             return row
         return None
 
-    # Notifications
+    
+    # Audit events
+    def create_audit_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        record = dict(event)
+        user_email = str(record.get("user_email") or "").strip().lower()
+        peer_email = str(record.get("peer_email") or "").strip().lower()
+        record["user_email"] = user_email or None
+        record["peer_email"] = peer_email or None
+        record["metadata"] = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+        if self.is_supabase():
+            self._supabase.table("app_audit_events").upsert(record, on_conflict="id").execute()
+            return record
+        rows = self._read_rows(self.audit_events_path)
+        rows.append(record)
+        self._write_rows(self.audit_events_path, rows)
+        return record
+    
     def create_notification(self, notif: dict[str, Any]) -> dict[str, Any]:
         record = dict(notif)
         record["user_email"] = self._norm_email(str(record.get("user_email") or ""))
@@ -566,3 +584,5 @@ class StorageRepository:
             out["message_count"] = len(self._read_rows(self.messages_path))
             out["notification_count"] = len(self._read_rows(self.notifications_path))
         return out
+
+

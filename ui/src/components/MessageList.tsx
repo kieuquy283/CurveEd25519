@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Message list component.
  */
 
@@ -16,33 +16,24 @@ interface MessageListProps {
   highlightedMessageId?: string | null;
 }
 
-export function MessageList({
-  messages,
-  conversationId,
-  highlightedMessageId,
-}: MessageListProps) {
+export function MessageList({ messages, conversationId, highlightedMessageId }: MessageListProps) {
   const scrollEndRef = useRef<HTMLDivElement>(null);
   void conversationId;
 
   const typingPeersMap = useTypingStore((s) => s.typingPeers);
+  const typingPeers = Array.from(typingPeersMap.values()).map((typing) => typing.peerId);
 
-  const typingPeers = Array.from(typingPeersMap.values())
-    .map((typing) => typing.peerId);
-
-  // Auto-scroll to bottom only when user is near bottom
   useEffect(() => {
     const el = scrollEndRef.current?.parentElement as HTMLElement | null;
     if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
-    if (atBottom) {
-      scrollEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    if (atBottom) scrollEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingPeers]);
 
   return (
     <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
       {messages.length === 0 ? (
-        <div className="h-full flex items-center justify-center">
+        <div className="flex h-full items-center justify-center">
           <div className="text-center text-zinc-500">
             <p className="text-sm">Đoạn chat chưa có tin nhắn</p>
             <p className="mt-1 text-xs">Bắt đầu cuộc trò chuyện an toàn</p>
@@ -58,18 +49,12 @@ export function MessageList({
             >
               <MessageBubble
                 message={message}
-                isFirstInGroup={
-                  idx === 0 || messages[idx - 1]?.from !== message.from
-                }
-                isLastInGroup={
-                  idx === messages.length - 1 || messages[idx + 1]?.from !== message.from
-                }
+                isFirstInGroup={idx === 0 || messages[idx - 1]?.from !== message.from}
+                isLastInGroup={idx === messages.length - 1 || messages[idx + 1]?.from !== message.from}
               />
             </div>
           ))}
-          {typingPeers.length > 0 && (
-            <TypingIndicator peers={typingPeers} />
-          )}
+          {typingPeers.length > 0 && <TypingIndicator peers={typingPeers} />}
           <div ref={scrollEndRef} />
         </>
       )}
