@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+﻿from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import json
 from pathlib import Path
@@ -78,7 +78,7 @@ def _require_trusted(owner: str, peer: str) -> dict:
     except ValueError as exc:
         raise HTTPException(
             status_code=403,
-            detail="Bạn cần xác minh kết nối và trao đổi khóa công khai trước khi gửi tin mã hóa.",
+            detail={"ok": False, "error": "verified_connection_required", "message": "Bạn cần xác minh kết nối và trao đổi khóa công khai trước khi gửi tin mã hóa."},
         ) from exc
 
 
@@ -223,3 +223,4 @@ def decrypt_message(req: DecryptRequest):
             "algorithms": ["X25519", "HKDF-SHA256", "ChaCha20-Poly1305", "Ed25519"],
         }
     return response
+

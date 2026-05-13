@@ -3,9 +3,53 @@
 async function parseOrThrow(response: Response) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(typeof data?.detail === "string" ? data.detail : `HTTP ${response.status}`);
+    const detail = data?.detail;
+    if (typeof detail === "string") throw new Error(detail);
+    if (typeof detail?.message === "string") throw new Error(detail.message);
+    throw new Error(typeof data?.error === "string" ? data.error : `HTTP ${response.status}`);
   }
   return data;
+}
+
+export type ConnectionStatusReason =
+  | "verified_connection"
+  | "missing_connection"
+  | "pending_connection"
+  | "peer_not_found"
+  | "peer_not_verified"
+  | "missing_crypto_profile";
+
+export interface ConnectionStatusResponse {
+  ok: boolean;
+  user: { email?: string; display_name?: string; user_id?: string };
+  peer: {
+    email?: string;
+    display_name?: string;
+    user_id?: string;
+    account_exists: boolean;
+    verified: boolean;
+    profile_exists: boolean;
+    has_x25519_public_key: boolean;
+    has_ed25519_public_key: boolean;
+  };
+  connection: {
+    exists: boolean;
+    id?: string | null;
+    status: "pending" | "verified" | "none";
+    requester_email?: string | null;
+    recipient_email?: string | null;
+    trusted: boolean;
+    verified_at?: string | null;
+  };
+  can_send_encrypted: boolean;
+  reason: ConnectionStatusReason;
+}
+
+export async function getConnectionStatus(user: string, peer: string): Promise<ConnectionStatusResponse> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/api/connections/status?user=${encodeURIComponent(user)}&peer=${encodeURIComponent(peer)}`
+  );
+  return parseOrThrow(response);
 }
 
 export async function requestConnection(params: { from_user: string; to: string }) {

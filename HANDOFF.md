@@ -2426,3 +2426,98 @@ Build/test results
 
 Additional note
 - Security limitation remains: cannot fully prevent screenshots/screen recording/external cameras/DevTools extraction once plaintext is displayed.
+
+## 2026-05-13 - Verified Connection Send Guard + Modal Flow
+
+Status: DONE
+
+What was improved:
+- Replaced send-time browser alert with a proper centered verification modal flow.
+- Added backend connection status endpoint for precise pre-send checks.
+- Enforced verified-connection requirement consistently in backend error shape.
+- Added active conversation connection status badge that opens the verification modal.
+
+Backend changes:
+1. `GET /api/connections/status?user=...&peer=...`
+- File: `app/api/connection_api.py`
+- Service logic: `ConnectionService.get_connection_status(...)`
+- Returns:
+  - user info
+  - peer account/profile/public-key readiness
+  - connection existence/status
+  - `can_send_encrypted`
+  - reason enum (`verified_connection`, `missing_connection`, `pending_connection`, `peer_not_found`, `peer_not_verified`, `missing_crypto_profile`)
+
+2. Verified-connection snapshot metadata
+- File: `app/services/connection_service.py`
+- On verify, connection now stores `connection_json` with requester/recipient public metadata snapshot and fingerprints.
+- No private keys are stored.
+
+3. Backend enforcement error normalization
+- File: `app/api/conversation_api.py`
+- Trusted-connection guard now returns structured 403 detail:
+  - `error: verified_connection_required`
+  - user-safe message in Vietnamese.
+
+Frontend changes:
+1. Connection status service
+- File: `ui/src/services/connections.ts`
+- Added `getConnectionStatus(user, peer)`.
+- Kept request/verify/list contacts functions.
+
+2. Verify-required modal UX
+- New file: `ui/src/components/connection/VerifyConnectionRequiredModal.tsx`
+- Uses `GlobalModal` portal and checklist:
+  - account exists
+  - peer email verified
+  - peer public-key profile ready
+  - connection verified
+- Action handling by reason:
+  - missing_connection: send request
+  - pending_connection (recipient): verify with code
+  - pending_connection (requester): waiting state
+  - peer_not_found / peer_not_verified / missing_crypto_profile: explanatory state + recheck
+
+3. Send guard in composer
+- File: `ui/src/components/MessageComposer.tsx`
+- Before encrypt/send, calls `getConnectionStatus(...)`.
+- If not allowed:
+  - opens verification modal
+  - preserves typed text/file draft
+  - does not call encrypt endpoint
+  - does not create optimistic pending send
+- If backend still returns `verified_connection_required`, composer re-opens modal instead of old alert path.
+
+4. Active conversation security status badge
+- Files:
+  - `ui/src/components/ChatHeader.tsx`
+  - `ui/src/components/ChatArea.tsx`
+- Header now shows status label:
+  - Đã kết nối an toàn
+  - Đang chờ xác minh
+  - Chưa xác minh
+  - Không kiểm tra được kết nối
+- Clicking badge opens the same verification modal.
+
+5. Crypto error parsing update
+- File: `ui/src/services/conversationCrypto.ts`
+- Improved detail parsing for structured backend error payloads.
+
+Files changed:
+- `app/api/connection_api.py`
+- `app/api/conversation_api.py`
+- `app/services/connection_service.py`
+- `ui/src/components/connection/VerifyConnectionRequiredModal.tsx` (new)
+- `ui/src/components/ChatArea.tsx`
+- `ui/src/components/ChatHeader.tsx`
+- `ui/src/components/MessageComposer.tsx`
+- `ui/src/services/connections.ts`
+- `ui/src/services/conversationCrypto.ts`
+
+Build / validation:
+- Frontend: `cd ui && npm run build` -> success.
+- Backend: `python -m compileall app server.py` -> success.
+
+Notes:
+- Existing encryption, websocket, persistence, notifications, trusted contacts, and signed-file flows were preserved.
+- Connection verification is now a guided modal-first UX rather than a blocking browser alert.

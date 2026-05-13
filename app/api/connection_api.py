@@ -60,3 +60,18 @@ def list_contacts(user: str = Query(..., description="user_id_or_email")):
         "ok": True,
         "contacts": contacts,
     }
+
+
+@router.get("/status")
+def connection_status(
+    user: str = Query(..., description="current user email/user_id"),
+    peer: str = Query(..., description="peer email/user_id"),
+):
+    try:
+        return service.get_connection_status(user=user, peer=peer)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "reason": "peer_not_found",
+            "error": str(exc),
+        }

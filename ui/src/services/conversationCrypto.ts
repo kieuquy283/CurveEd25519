@@ -50,6 +50,8 @@ async function readErrorMessage(response: Response): Promise<string> {
   try {
     const data = await response.json();
     if (typeof data?.detail === "string") return data.detail;
+    if (typeof data?.detail?.message === "string") return data.detail.message;
+    if (typeof data?.detail?.error === "string") return data.detail.error;
     if (typeof data?.error === "string") return data.error;
     if (typeof data?.message === "string") return data.message;
   } catch {

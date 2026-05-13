@@ -15,6 +15,8 @@ import { getNickname, setNickname } from "@/lib/conversationNicknames";
 import DynamicWatermark from "@/components/privacy/DynamicWatermark";
 import { dispatchPrivacyHideAll } from "@/hooks/usePrivacyReveal";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import VerifyConnectionRequiredModal from "@/components/connection/VerifyConnectionRequiredModal";
+import { ConnectionStatusResponse, getConnectionStatus } from "@/services/connections";
 
 interface ChatAreaProps {
   conversationId: string;
@@ -30,6 +32,8 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
   const updateConversation = useChatStore((s) => s.updateConversation);
   const currentUser = useAuthStore((s) => s.currentUser);
   const prefs = useSettingsStore((s) => s.prefs);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatusResponse | null>(null);
+  const [connectionStatusOpen, setConnectionStatusOpen] = useState(false);
 
   const activeConversation = conversations.get(conversationId);
   const messages = useChatStore((s) => s.messages.get(conversationId) ?? EMPTY_MESSAGES);
@@ -55,6 +59,17 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [prefs.hideOnWindowBlur, prefs.privacyMode]);
+
+  useEffect(() => {
+    const user = (currentUser?.email || currentUser?.id || "").trim().toLowerCase();
+    const peer = (activeConversation?.peerId || "").trim().toLowerCase();
+    if (!user || !peer) return;
+    getConnectionStatus(user, peer)
+      .then((status) => setConnectionStatus(status))
+      .catch(() => {
+        setConnectionStatus(null);
+      });
+  }, [activeConversation?.peerId, currentUser?.email, currentUser?.id]);
 
   const attachments = useMemo(() => {
     return messages.flatMap((m) => {
@@ -100,6 +115,16 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
           onBack={onBack}
           infoPanelOpen={infoPanelOpen}
           onToggleInfoPanel={() => setInfoPanelOpen((v) => !v)}
+          connectionStatusLabel={
+            connectionStatus?.reason === "verified_connection"
+              ? "Đã kết nối an toàn"
+              : connectionStatus?.reason === "pending_connection"
+                ? "Đang chờ xác minh"
+                : connectionStatus?.reason
+                  ? "Chưa xác minh"
+                  : "Không kiểm tra được kết nối"
+          }
+          onOpenConnectionSecurity={() => setConnectionStatusOpen(true)}
         />
 
         <div className="mx-auto mt-4 max-w-md rounded-3xl border border-violet-400/20 bg-violet-500/10 px-5 py-3 text-center text-sm text-zinc-300 shadow-[0_0_40px_rgba(124,58,237,0.18)] backdrop-blur">
@@ -116,8 +141,21 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
 
         <MessageList messages={messages} conversationId={conversationId} highlightedMessageId={highlightedMessageId} />
 
-        <MessageComposer conversationId={conversationId} />
+        <MessageComposer
+          conversationId={conversationId}
+          connectionStatus={connectionStatus}
+          onConnectionStatusChange={setConnectionStatus}
+          onOpenConnectionStatusModal={() => setConnectionStatusOpen(true)}
+        />
       </div>
+      <VerifyConnectionRequiredModal
+        open={connectionStatusOpen}
+        onClose={() => setConnectionStatusOpen(false)}
+        status={connectionStatus}
+        currentUser={(currentUser?.email || currentUser?.id || "").trim().toLowerCase()}
+        peerIdentifier={activeConversation.peerId}
+        onStatusUpdated={setConnectionStatus}
+      />
 
       {infoPanelOpen && (
         <>

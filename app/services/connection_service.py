@@ -146,6 +146,14 @@ class ConnectionService:
         conn["verified_at"] = self._utc_now()
         conn["verification_code_hash"] = None
         conn["verification_expires_at"] = None
+        conn["connection_json"] = self._build_connection_json(
+            requester=requester,
+            recipient=recipient,
+            requester_profile=requester_profile,
+            recipient_profile=recipient_profile,
+            verified_at=conn["verified_at"],
+            trusted=True,
+        )
         self._save_connections(connections)
         self.storage.create_notification(
             {
@@ -250,6 +258,71 @@ class ConnectionService:
 
         return conn
 
+    def get_connection_status(self, *, user: str, peer: str) -> dict[str, Any]:
+        user_norm = user.strip().lower()
+        peer_norm = peer.strip().lower()
+        user_info = self._resolve_user_soft(user_norm)
+        if not user_info:
+            return {
+                "ok": True,
+                "user": {"email": user_norm, "display_name": user_norm, "user_id": user_norm},
+                "peer": {
+                    "email": peer_norm,
+                    "display_name": peer_norm,
+                    "user_id": peer_norm,
+                    "account_exists": False,
+                    "verified": False,
+                    "profile_exists": False,
+                    "has_x25519_public_key": False,
+                    "has_ed25519_public_key": False,
+                },
+                "connection": {
+                    "exists": False,
+                    "id": None,
+                    "status": "none",
+                    "requester_email": None,
+                    "recipient_email": None,
+                    "trusted": False,
+                    "verified_at": None,
+                },
+                "can_send_encrypted": False,
+                "reason": "peer_not_found",
+            }
+
+        peer_info = self._resolve_user_soft(peer_norm)
+        if not peer_info:
+            return self._status_payload(user_info, None, None, "peer_not_found")
+
+        if user_info["email"] == peer_info["email"]:
+            return self._status_payload(user_info, peer_info, None, "missing_connection")
+
+        accounts = self.auth_service._load_accounts()
+        peer_account = self.auth_service._find_account(accounts, peer_info["email"])
+        peer_verified = bool(peer_account and peer_account.get("verified"))
+
+        peer_profile = self._profile_for_email(peer_info["email"]) if peer_verified else {}
+        profile_exists = bool(peer_profile)
+        has_x = bool((peer_profile.get("x25519") or {}).get("public_key"))
+        has_ed = bool((peer_profile.get("ed25519") or {}).get("public_key"))
+
+        conn = self._find_pair(self._load_connections(), user_info["email"], peer_info["email"])
+        conn_status = str(conn.get("status") or "none") if conn else "none"
+        trusted = bool(conn and conn_status == "verified")
+
+        if not peer_verified:
+            reason = "peer_not_verified"
+        elif not (profile_exists and has_x and has_ed):
+            reason = "missing_crypto_profile"
+        elif not conn:
+            reason = "missing_connection"
+        elif conn_status != "verified":
+            reason = "pending_connection"
+        else:
+            reason = "verified_connection"
+
+        can_send = reason == "verified_connection"
+        return self._status_payload(user_info, peer_info, conn, reason, can_send_override=can_send, peer_profile=peer_profile, peer_verified=peer_verified, trusted=trusted)
+
     def _keys_match_snapshot(self, conn: dict[str, Any], email: str, profile: dict[str, Any]) -> bool:
         if conn.get("requester_email") == email:
             x = conn.get("requester_x25519_public_key")
@@ -305,6 +378,21 @@ class ConnectionService:
                 }
         raise ValueError("User not found")
 
+    def _resolve_user_soft(self, identifier: str) -> dict[str, Any] | None:
+        normalized = identifier.strip().lower()
+        accounts = self.auth_service._load_accounts()
+        for account in accounts:
+            email = str(account.get("email") or "").strip().lower()
+            user_id = str(account.get("user_id") or email).strip().lower()
+            if normalized in {email, user_id}:
+                return {
+                    "user_id": user_id,
+                    "email": email,
+                    "display_name": account.get("display_name") or email,
+                    "verified": bool(account.get("verified")),
+                }
+        return None
+
     def _profile_for_email(self, email: str) -> dict[str, Any]:
         return self.auth_service._ensure_profile_exists(email.strip().lower(), email.strip().lower())
 
@@ -331,6 +419,89 @@ class ConnectionService:
         conn["recipient_ed25519_public_key"] = recipient_ed
         conn["requester_key_fingerprint"] = CryptoService.fingerprint_public_key(requester_ed)
         conn["recipient_key_fingerprint"] = CryptoService.fingerprint_public_key(recipient_ed)
+
+    def _build_connection_json(
+        self,
+        *,
+        requester: dict[str, Any],
+        recipient: dict[str, Any],
+        requester_profile: dict[str, Any],
+        recipient_profile: dict[str, Any],
+        verified_at: str | None,
+        trusted: bool,
+    ) -> dict[str, Any]:
+        requester_x = (requester_profile.get("x25519") or {}).get("public_key")
+        requester_ed = (requester_profile.get("ed25519") or {}).get("public_key")
+        recipient_x = (recipient_profile.get("x25519") or {}).get("public_key")
+        recipient_ed = (recipient_profile.get("ed25519") or {}).get("public_key")
+        return {
+            "requester": {
+                "email": requester["email"],
+                "display_name": requester.get("display_name") or requester["email"],
+                "user_id": requester["user_id"],
+                "x25519_public_key": requester_x,
+                "ed25519_public_key": requester_ed,
+                "x25519_fingerprint": CryptoService.fingerprint_public_key(requester_x),
+                "ed25519_fingerprint": CryptoService.fingerprint_public_key(requester_ed),
+            },
+            "recipient": {
+                "email": recipient["email"],
+                "display_name": recipient.get("display_name") or recipient["email"],
+                "user_id": recipient["user_id"],
+                "x25519_public_key": recipient_x,
+                "ed25519_public_key": recipient_ed,
+                "x25519_fingerprint": CryptoService.fingerprint_public_key(recipient_x),
+                "ed25519_fingerprint": CryptoService.fingerprint_public_key(recipient_ed),
+            },
+            "verified_at": verified_at,
+            "trusted": trusted,
+        }
+
+    def _status_payload(
+        self,
+        user_info: dict[str, Any],
+        peer_info: dict[str, Any] | None,
+        conn: dict[str, Any] | None,
+        reason: str,
+        *,
+        can_send_override: bool | None = None,
+        peer_profile: dict[str, Any] | None = None,
+        peer_verified: bool | None = None,
+        trusted: bool = False,
+    ) -> dict[str, Any]:
+        profile = peer_profile or {}
+        has_x = bool((profile.get("x25519") or {}).get("public_key"))
+        has_ed = bool((profile.get("ed25519") or {}).get("public_key"))
+        can_send = can_send_override if can_send_override is not None else reason == "verified_connection"
+        return {
+            "ok": True,
+            "user": {
+                "email": user_info.get("email"),
+                "display_name": user_info.get("display_name"),
+                "user_id": user_info.get("user_id"),
+            },
+            "peer": {
+                "email": peer_info.get("email") if peer_info else None,
+                "display_name": peer_info.get("display_name") if peer_info else None,
+                "user_id": peer_info.get("user_id") if peer_info else None,
+                "account_exists": bool(peer_info),
+                "verified": bool(peer_verified) if peer_verified is not None else bool(peer_info and peer_info.get("verified")),
+                "profile_exists": bool(profile) if peer_info else False,
+                "has_x25519_public_key": has_x if peer_info else False,
+                "has_ed25519_public_key": has_ed if peer_info else False,
+            },
+            "connection": {
+                "exists": bool(conn),
+                "id": conn.get("id") if conn else None,
+                "status": str(conn.get("status") or "none") if conn else "none",
+                "requester_email": conn.get("requester_email") if conn else None,
+                "recipient_email": conn.get("recipient_email") if conn else None,
+                "trusted": trusted,
+                "verified_at": conn.get("verified_at") if conn else None,
+            },
+            "can_send_encrypted": can_send,
+            "reason": reason,
+        }
 
     def _find_pair(self, connections: list[dict[str, Any]], a_email: str, b_email: str) -> dict[str, Any] | None:
         pair = {a_email, b_email}

@@ -5,7 +5,6 @@ import { CheckCircle2, FileCheck2, FileSignature, FileUp, Loader2, Send, ShieldA
 
 import { useChatStore } from "@/store/useChatStore";
 import { getCurrentUserId, useAuthStore } from "@/store/useAuthStore";
-import { useContactStore } from "@/store/useContactStore";
 import { websocketService } from "@/services/websocket";
 import { saveConversationMessage } from "@/services/conversations";
 import {
@@ -16,11 +15,15 @@ import {
 } from "@/services/conversationCrypto";
 import { buildApiBaseCandidates } from "@/config/env";
 import { ChatMessage, SignedFileContainer, VerificationResult } from "@/types/models";
+import { ConnectionStatusResponse, getConnectionStatus } from "@/services/connections";
 
 import { buildPacketId, buildTimestamp, PacketType } from "@/types/packets";
 
 interface Props {
   conversationId: string;
+  connectionStatus?: ConnectionStatusResponse | null;
+  onConnectionStatusChange?: (status: ConnectionStatusResponse) => void;
+  onOpenConnectionStatusModal?: () => void;
 }
 
 interface PendingFile {
@@ -68,7 +71,12 @@ function downloadBase64File(filename: string, mimeType: string, contentB64: stri
   anchor.click();
 }
 
-export function MessageComposer({ conversationId }: Props) {
+export function MessageComposer({
+  conversationId,
+  connectionStatus,
+  onConnectionStatusChange,
+  onOpenConnectionStatusModal,
+}: Props) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [pendingFile, setPendingFile] = useState<PendingFile | null>(null);
@@ -83,7 +91,6 @@ export function MessageComposer({ conversationId }: Props) {
   const verifyFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const chatStore = useChatStore.getState();
-  const isTrustedContact = useContactStore((s) => s.isTrustedContact);
   const currentUserEmail = useAuthStore((s) => s.currentUser?.email);
 
   useEffect(() => {
@@ -235,8 +242,10 @@ export function MessageComposer({ conversationId }: Props) {
     const file = pendingFile;
     const trimmed = text.trim();
     if ((!trimmed && !file) || sending) return;
-    if (!isTrustedContact(conversationId)) {
-      alert("Bạn cần xác minh kết nối và trao đổi khóa công khai trước khi gửi tin mã hóa.");
+    const latestStatus = await getConnectionStatus(currentUserId, conversationId).catch(() => connectionStatus ?? null);
+    if (!latestStatus || !latestStatus.can_send_encrypted) {
+      if (latestStatus) onConnectionStatusChange?.(latestStatus);
+      onOpenConnectionStatusModal?.();
       return;
     }
 
@@ -353,13 +362,30 @@ export function MessageComposer({ conversationId }: Props) {
     } catch (error) {
       console.error("[Composer] Backend crypto API unreachable or encrypt failed:", error);
       const detail = error instanceof Error ? error.message : "Không kết nối được backend crypto API. Vui lòng thử lại.";
-      alert(detail || "Không kết nối được backend crypto API. Vui lòng thử lại.");
+      if (detail.includes("verified_connection_required")) {
+        const refreshed = await getConnectionStatus(currentUserId, conversationId).catch(() => null);
+        if (refreshed) onConnectionStatusChange?.(refreshed);
+        onOpenConnectionStatusModal?.();
+      } else {
+        alert(detail || "Không kết nối được backend crypto API. Vui lòng thử lại.");
+      }
       chatStore.updateMessageStatus(messageId, conversationId, "failed");
     } finally {
       setSending(false);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [conversationId, currentUserEmail, encryptMessage, pendingFile, sending, text, chatStore, isTrustedContact]);
+  }, [
+    conversationId,
+    currentUserEmail,
+    encryptMessage,
+    pendingFile,
+    sending,
+    text,
+    chatStore,
+    connectionStatus,
+    onConnectionStatusChange,
+    onOpenConnectionStatusModal,
+  ]);
 
   return (
     <div className="border-t border-white/10 bg-slate-950/70 p-4 backdrop-blur-xl">

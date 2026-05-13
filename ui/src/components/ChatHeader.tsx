@@ -9,6 +9,8 @@ interface ChatHeaderProps {
   onBack?: () => void;
   infoPanelOpen?: boolean;
   onToggleInfoPanel?: () => void;
+  connectionStatusLabel?: string;
+  onOpenConnectionSecurity?: () => void;
 }
 
 export function ChatHeader({
@@ -16,6 +18,8 @@ export function ChatHeader({
   onBack,
   infoPanelOpen = false,
   onToggleInfoPanel,
+  connectionStatusLabel,
+  onOpenConnectionSecurity,
 }: ChatHeaderProps) {
   const displayName = conversation.peerName || conversation.peerId;
   const avatarLetter = displayName.charAt(0).toUpperCase();
@@ -39,16 +43,14 @@ export function ChatHeader({
 
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-white md:text-base">{displayName}</h2>
-          <div className="mt-0.5 flex items-center gap-1 text-xs text-zinc-400">
-            {conversation.isOnline ? (
-              <>
-                <Circle size={7} className="fill-emerald-500 text-emerald-500" />
-                <span>Đã kết nối an toàn</span>
-              </>
-            ) : (
-              <span>Mất kết nối</span>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={onOpenConnectionSecurity}
+            className="mt-0.5 flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200"
+          >
+            <Circle size={7} className="fill-emerald-500 text-emerald-500" />
+            <span>{connectionStatusLabel || (conversation.isOnline ? "Đã kết nối an toàn" : "Không kiểm tra được kết nối")}</span>
+          </button>
         </div>
       </div>
 
