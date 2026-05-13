@@ -10,6 +10,7 @@ import { DeliveryState } from "@/types/packets";
 
 export interface ChatMessage {
   id: string;
+  clientMessageId?: string;
 
   packetId?: string;
 

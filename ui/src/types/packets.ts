@@ -140,6 +140,10 @@ export interface MessagePayload {
   envelope: MessageEnvelope;
   plaintext?: string;
   debug?: Record<string, unknown>;
+  conversation_id?: string;
+  client_message_id?: string;
+  plaintext_preview?: string;
+  message_type?: "text" | "file" | "signed-file";
 }
 
 export interface AckPayload {

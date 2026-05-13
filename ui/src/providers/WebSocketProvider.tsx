@@ -23,8 +23,8 @@ import {
 } from "@/types/packets";
 
 import { ChatMessage } from "@/types/models";
-import { saveConversationMessage } from "@/services/conversations";
 import { normalizeChatAttachment } from "@/lib/normalizeAttachment";
+import { normalizeEmail } from "@/services/connections";
 
 function parseIncomingEnvelope(rawText: string) {
 
@@ -149,9 +149,12 @@ export function WebSocketProvider({
     );
   const initialWsErrorNotifiedRef = useRef(false);
   const currentUserEmail = useAuthStore((state) => state.currentUser?.email);
-  const currentUserId = useAuthStore(
-    (state) => state.currentUser?.id
-  ) || process.env.NEXT_PUBLIC_USER_ID || "frontend";
+  const currentUserId = normalizeEmail(
+    useAuthStore((state) => state.currentUser?.email) ||
+      useAuthStore((state) => state.currentUser?.id) ||
+      process.env.NEXT_PUBLIC_USER_ID ||
+      "frontend"
+  );
   const wsEndpoint = useSettingsStore(
     (state) => state.prefs.wsEndpoint
   );
@@ -200,18 +203,28 @@ export function WebSocketProvider({
         const parsedEnvelope =
           parseIncomingEnvelope(plaintext);
 
-        const conversationId = packet.sender_id;
-        const currentUser =
-          (useAuthStore.getState().currentUser?.id ||
-            useAuthStore.getState().currentUser?.email ||
-            packet.receiver_id) ?? packet.receiver_id;
-
+        const payloadConversationId =
+          typeof payload.conversation_id === "string"
+            ? payload.conversation_id
+            : "";
+        const senderId = normalizeEmail(packet.sender_id || "");
+        const receiverId = normalizeEmail(packet.receiver_id || "");
+        const activeUser = normalizeEmail(currentUserEmail || currentUserId);
+        const peerId = senderId === activeUser ? receiverId : senderId;
+        const existingConversation = Array.from(chatStore.conversations.values()).find(
+          (conv) => normalizeEmail(conv.peerId) === peerId
+        );
+        const conversationId = payloadConversationId || existingConversation?.id || peerId;
         const message: ChatMessage = {
           id: packet.packet_id,
+          clientMessageId:
+            typeof payload.client_message_id === "string"
+              ? payload.client_message_id
+              : undefined,
           conversationId,
 
-          from: packet.sender_id,
-          to: packet.receiver_id,
+          from: senderId,
+          to: receiverId,
 
           text: parsedEnvelope.text,
           type: parsedEnvelope.type,
@@ -240,66 +253,37 @@ export function WebSocketProvider({
         };
 
         chatStore.addMessage(message);
-        chatStore.addConversation({
+        chatStore.upsertConversation({
           id: conversationId,
-          peerId: packet.sender_id,
-          peerName: packet.sender_id,
+          peerId,
+          peerName: peerId,
           createdAt: packet.created_at ?? new Date().toISOString(),
           lastMessageAt: packet.created_at ?? new Date().toISOString(),
           unreadCount: 0,
           encrypted: true,
+          lastMessage: message,
         });
-
-        try {
-          await saveConversationMessage(conversationId, {
-            sender_email: packet.sender_id,
-            receiver_email: currentUser,
-            packet_id: packet.packet_id,
-            message_type: parsedEnvelope.type,
-            ciphertext_envelope: envelope,
-            plaintext_preview: parsedEnvelope.text.slice(0, 200),
-            attachment_json:
-              parsedEnvelope.attachments && parsedEnvelope.attachments.length > 0
-                ? ({
-                    ...(parsedEnvelope.attachments[0] as unknown as Record<string, unknown>),
-                    metadata:
-                      (parsedEnvelope.attachments[0]?.metadata as Record<string, unknown> | undefined) ||
-                      undefined,
-                  } as Record<string, unknown>)
-                : undefined,
-            crypto_debug:
-              (payload.debug as Record<string, unknown> | undefined) || undefined,
-            status: "delivered",
-          });
-        } catch (persistError) {
-          console.warn("[WebSocketProvider] saveConversationMessage failed:", persistError);
-        }
 
         const activeId =
           chatStore.activeConversationId;
 
         if (activeId !== conversationId) {
-          chatStore.updateConversation(
-            conversationId,
-            {
-              unreadCount:
-                (chatStore.conversations.get(
-                  conversationId
-                )?.unreadCount ?? 0) + 1,
-            }
-          );
+          chatStore.markConversationUnread(conversationId);
+        } else {
+          chatStore.markConversationRead(conversationId);
         }
 
-        useNotificationStore
-          .getState()
-          .addNotification({
-            title: packet.sender_id,
+        if (activeId !== conversationId) {
+          useNotificationStore.getState().addNotification({
+            title: peerId,
             body: parsedEnvelope.text.slice(0, 120),
             level: "message",
-            peerId: packet.sender_id,
+            peerId,
             packetId: packet.packet_id,
             read: false,
+            metadata: { conversationId, peerEmail: peerId },
           });
+        }
 
       }
     );

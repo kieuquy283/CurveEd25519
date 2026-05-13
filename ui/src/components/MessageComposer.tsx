@@ -21,6 +21,7 @@ import { useVerificationOverlay } from "@/hooks/useVerificationOverlay";
 import { normalizeChatAttachment } from "@/lib/normalizeAttachment";
 
 import { buildPacketId, buildTimestamp, PacketType } from "@/types/packets";
+import { normalizeEmail } from "@/services/connections";
 
 interface Props {
   conversationId: string;
@@ -90,6 +91,9 @@ function decodeSignedContainerFromBase64(base64: string): SignedFileContainer | 
   }
   return null;
 }
+
+const CONNECTION_STATUS_CACHE_MS = 60_000;
+const connectionStatusCheckedAt = new Map<string, number>();
 
 export function MessageComposer({
   conversationId,
@@ -267,11 +271,23 @@ export function MessageComposer({
   }, [sending]);
 
   const handleSend = useCallback(async () => {
-    const currentUserId = (currentUserEmail || getCurrentUserId()).trim().toLowerCase();
+    const currentUserId = normalizeEmail(currentUserEmail || getCurrentUserId());
     const file = pendingFile;
     const trimmed = text.trim();
     if ((!trimmed && !file) || sending) return;
-    const latestStatus = await refreshConnectionStatus(currentUserId, peerIdentifier).catch(() => connectionStatus ?? null);
+    const peerEmail = normalizeEmail(peerIdentifier);
+    const cacheKey = [currentUserId, peerEmail].sort().join("::");
+    const lastChecked = connectionStatusCheckedAt.get(cacheKey) ?? 0;
+    const nowMs = Date.now();
+    const cachedValid =
+      Boolean(connectionStatus?.can_send_encrypted) &&
+      nowMs - lastChecked < CONNECTION_STATUS_CACHE_MS;
+    const latestStatus = cachedValid
+      ? connectionStatus
+      : await refreshConnectionStatus(currentUserId, peerEmail).catch(() => connectionStatus ?? null);
+    if (latestStatus?.can_send_encrypted) {
+      connectionStatusCheckedAt.set(cacheKey, nowMs);
+    }
     if (!latestStatus || !latestStatus.can_send_encrypted) {
       if (latestStatus) onConnectionStatusChange?.(latestStatus);
       onOpenConnectionStatusModal?.();
@@ -279,7 +295,8 @@ export function MessageComposer({
     }
 
     setSending(true);
-    const messageId = crypto.randomUUID();
+    const messageId = `tmp-${crypto.randomUUID()}`;
+    const clientMessageId = crypto.randomUUID();
     const now = new Date().toISOString();
     const isFileMessage = Boolean(file);
 
@@ -337,6 +354,7 @@ export function MessageComposer({
 
     const outgoingMessage: ChatMessage = {
       id: messageId,
+      clientMessageId,
       conversationId,
       from: currentUserId,
       to: conversationId,
@@ -371,18 +389,25 @@ export function MessageComposer({
           contentType: isFileMessage ? "file" : "text",
         },
         cryptoDirection: "encrypt",
-        status: "sent",
+        status: "queued",
       });
 
+      const packetId = buildPacketId();
       const packet = {
-        packet_id: buildPacketId(),
+        packet_id: packetId,
         packet_type: PacketType.MESSAGE,
         sender_id: currentUserId,
-        receiver_id: conversationId,
+        receiver_id: peerEmail,
         created_at: buildTimestamp(),
         requires_ack: true,
         encrypted: true,
-        payload: { envelope: encrypted.envelope },
+        payload: {
+          envelope: encrypted.envelope,
+          conversation_id: conversationId,
+          client_message_id: clientMessageId,
+          plaintext_preview: trimmed.slice(0, 200),
+          message_type: isFileMessage ? "file" : "text",
+        },
       };
 
       try {
@@ -395,9 +420,9 @@ export function MessageComposer({
       }
 
       try {
-        await saveConversationMessage(conversationId, {
+        const saved = await saveConversationMessage(conversationId, {
           sender_email: currentUserId,
-          receiver_email: peerIdentifier,
+          receiver_email: peerEmail,
           packet_id: packet.packet_id,
           message_type: isFileMessage ? "file" : "text",
           ciphertext_envelope: encrypted.envelope as Record<string, unknown>,
@@ -406,8 +431,19 @@ export function MessageComposer({
           crypto_debug: (encrypted.debug ?? {}) as Record<string, unknown>,
           status: "sent",
         });
+        const savedMessage = saved.message || {};
+        chatStore.replaceMessage(conversationId, messageId, {
+          ...outgoingMessage,
+          id: String(savedMessage.id || packetId),
+          packetId: String(savedMessage.packet_id || packetId),
+          clientMessageId,
+          timestamp: String(savedMessage.created_at || now),
+          status: "sent",
+          envelope: (savedMessage.ciphertext_envelope as Record<string, unknown> | undefined) || encrypted.envelope,
+        });
       } catch (persistError) {
         console.warn("[Composer] saveConversationMessage failed:", persistError);
+        chatStore.updateMessageStatus(messageId, conversationId, "sent");
       }
     } catch (error) {
       console.error("[Composer] Backend crypto API unreachable or encrypt failed:", error);

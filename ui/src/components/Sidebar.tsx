@@ -50,12 +50,13 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
   const [connectionMsg, setConnectionMsg] = useState("");
   const [devCode, setDevCode] = useState("");
   const loadedConversationsForUserRef = useRef<string | null>(null);
-  const loadedMessagesForKeyRef = useRef<string | null>(null);
+  const loadedMessagesAtRef = useRef<Map<string, number>>(new Map());
 
   const conversationMap = useChatStore((s) => s.conversations);
   const addConversation = useChatStore((s) => s.addConversation);
   const addMessages = useChatStore((s) => s.addMessages);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const markConversationRead = useChatStore((s) => s.markConversationRead);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const notificationStateHistory = useNotificationStore((s) => s.history);
   const upsertNotification = useNotificationStore((s) => s.upsertNotification);
@@ -184,8 +185,9 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
     const userId = currentUser?.id || currentUser?.email;
     if (!userId || !activeConversationId) return;
     const key = `${userId}::${activeConversationId}`;
-    if (loadedMessagesForKeyRef.current === key) return;
-    loadedMessagesForKeyRef.current = key;
+    const lastLoadedAt = loadedMessagesAtRef.current.get(key) ?? 0;
+    if (Date.now() - lastLoadedAt < 2500) return;
+    loadedMessagesAtRef.current.set(key, Date.now());
     listConversationMessages(activeConversationId, userId, 100)
       .then((result) => {
         const mapped = result.messages.map((m) => ({
@@ -218,7 +220,7 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
       })
       .catch((fetchError) => {
         console.warn("[Sidebar] Failed to fetch messages:", fetchError);
-        loadedMessagesForKeyRef.current = null;
+        loadedMessagesAtRef.current.delete(key);
       });
   }, [activeConversationId, currentUser?.id, currentUser?.email, addMessages]);
 
@@ -344,6 +346,32 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
                     encrypted: true,
                   });
                   setActiveConversation(convId || peerEmail);
+                  markConversationRead(convId || peerEmail);
+                  const userForLoad = currentUser?.id || currentUser?.email;
+                  if (userForLoad) {
+                    listConversationMessages(convId || peerEmail, userForLoad, 100)
+                      .then((result) => {
+                        const mapped = result.messages.map((m) => ({
+                          id: String(m.id || m.packet_id || crypto.randomUUID()),
+                          packetId: (m.packet_id as string | undefined) || undefined,
+                          conversationId: String(m.conversation_id || convId || peerEmail),
+                          from: String(m.sender_email || ""),
+                          to: String(m.receiver_email || ""),
+                          text: String(m.plaintext_preview || ""),
+                          type: String(m.message_type || "text") as "text" | "file",
+                          envelope: (m.ciphertext_envelope as Record<string, unknown> | undefined) || undefined,
+                          attachments:
+                            m.attachment_json && typeof m.attachment_json === "object"
+                              ? [normalizeChatAttachment(m.attachment_json) || (m.attachment_json as never)]
+                              : undefined,
+                          cryptoDebug: (m.crypto_debug as Record<string, unknown> | undefined) || undefined,
+                          timestamp: String(m.created_at || new Date().toISOString()),
+                          status: "delivered" as const,
+                        }));
+                        addMessages(mapped);
+                      })
+                      .catch(() => {});
+                  }
                   if (String(meta.status || "") === "pending") {
                     setShowDialog(true);
                     setConnectTo(peerEmail);

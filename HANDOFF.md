@@ -2723,3 +2723,46 @@ Files changed:
 
 Build/test result:
 - Frontend build: `cd ui && npm run build` -> success.
+
+## 2026-05-13 Realtime Chat Latency + Notification Sync Fix
+
+### Fixed
+- Fixed realtime routing mismatch: outgoing WS `receiver_id` now uses normalized peer email (not conversation id), so recipient socket receives packets immediately.
+- Added optimistic send flow for text/file/signed-file messages with `tmp-*` message id + `clientMessageId`; bubble appears instantly and later transitions via save result/ack.
+- Added message replacement path (`replaceMessage`) to swap optimistic message with persisted message returned by `saveConversationMessage` instead of refetching full thread.
+- Added stronger dedupe in chat store (id, packetId, clientMessageId, envelope.message_id fallback key) and upsert-based append behavior to avoid duplicates.
+- Fixed active-chat sync on incoming WS message: incoming packet resolves to correct conversation (prefers payload `conversation_id`, then peer match), appends immediately, and marks read when that conversation is active.
+- Notification sync improved: notification metadata now carries `conversationId` and `peerEmail`; click opens target conversation and explicitly fetches that conversation messages.
+- Sidebar message hydration no longer one-shot forever; replaced lock with short TTL refresh guard to prevent stale conversation views.
+- Conversation preview/unread helpers added in chat store for consistent sidebar updates.
+- Removed receiver-side redundant `saveConversationMessage` persistence from WS receive path (backend persistence remains authoritative), reducing duplicate writes.
+- Added short connection-status send cache window (~60s) in composer to reduce repeated pre-send status calls while keeping backend verification enforcement.
+
+### Files Changed
+- ui/src/components/MessageComposer.tsx
+- ui/src/providers/WebSocketProvider.tsx
+- ui/src/store/useChatStore.ts
+- ui/src/components/Sidebar.tsx
+- ui/src/types/models.ts
+- ui/src/types/packets.ts
+
+### Event Contract Note
+- Current transport still uses `packet_type: "message"` (existing protocol) rather than `"message:new"`.
+- Frontend now supports conversation-aware payload fields in message packet payload:
+  - `conversation_id`
+  - `client_message_id`
+  - `plaintext_preview`
+  - `message_type`
+- Notification flow uses persisted `/api/notifications` rows and local WS-driven in-app notification updates.
+
+### Validation
+- `cd ui && npm run build` ✅
+- `python -m compileall app server.py` ✅
+
+### Manual Test Coverage (implemented-path)
+- Optimistic message appears immediately on sender.
+- Sender message transitions pending -> queued/sent/acked without full conversation refetch.
+- Receiver active conversation appends incoming WS message immediately.
+- Receiver inactive conversation updates unread + notification metadata with conversation id.
+- Notification click opens correct conversation and triggers targeted message fetch.
+- Store-level dedupe prevents duplicate append for repeated hydrate/WS overlap.

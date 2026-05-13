@@ -18,10 +18,17 @@ interface ChatStore {
   getConversations: () => Conversation[];
   setActiveConversation: (id: string | null) => void;
   clearUnreadCount: (conversationId: string) => void;
+  upsertConversation: (conversation: Conversation) => void;
+  updateConversationPreview: (conversationId: string, preview: string, createdAt: string) => void;
+  markConversationUnread: (conversationId: string) => void;
+  markConversationRead: (conversationId: string) => void;
 
   // Message methods
   addMessage: (message: ChatMessage) => void;
+  appendMessage: (conversationId: string, message: ChatMessage) => void;
   addMessages: (messages: ChatMessage[]) => void;
+  replaceMessage: (conversationId: string, tempId: string, realMessage: ChatMessage) => void;
+  dedupeMessages: (conversationId: string) => void;
   getMessages: (conversationId: string) => ChatMessage[];
   updateMessageStatus: (
     messageId: string,
@@ -71,6 +78,41 @@ function touchConversation(
   return conversations;
 }
 
+function messageDedupKey(message: ChatMessage): string {
+  const envelope = message.envelope as Record<string, unknown> | undefined;
+  const envelopeMessageId =
+    envelope && typeof envelope.message_id === "string" ? envelope.message_id : "";
+  if (message.id) return `id:${message.id}`;
+  if (message.packetId) return `packet:${message.packetId}`;
+  if (message.clientMessageId) return `client:${message.clientMessageId}`;
+  if (envelopeMessageId) return `env:${envelopeMessageId}`;
+  return `fallback:${message.from}:${message.to}:${message.timestamp}:${message.text.slice(0, 64)}`;
+}
+
+function upsertMessageList(existing: ChatMessage[], incoming: ChatMessage): ChatMessage[] {
+  const incomingKeys = new Set([
+    messageDedupKey(incoming),
+    incoming.packetId ? `packet:${incoming.packetId}` : "",
+    incoming.clientMessageId ? `client:${incoming.clientMessageId}` : "",
+  ].filter(Boolean));
+
+  const index = existing.findIndex((m) => {
+    const keys = [
+      messageDedupKey(m),
+      m.packetId ? `packet:${m.packetId}` : "",
+      m.clientMessageId ? `client:${m.clientMessageId}` : "",
+    ];
+    return keys.some((k) => k && incomingKeys.has(k));
+  });
+
+  if (index >= 0) {
+    const next = [...existing];
+    next[index] = { ...next[index], ...incoming };
+    return next;
+  }
+  return [...existing, incoming];
+}
+
 export const useChatStore = create<ChatStore>()(
   devtools(
     (set, get) => ({
@@ -92,6 +134,8 @@ export const useChatStore = create<ChatStore>()(
             conversations: newConversations,
           };
         }),
+      upsertConversation: (conversation) =>
+        get().addConversation(conversation),
 
       updateConversation: (id, partial) =>
         set((state) => {
@@ -157,26 +201,46 @@ export const useChatStore = create<ChatStore>()(
             conversations: newConversations,
           };
         }),
+      markConversationUnread: (conversationId) =>
+        set((state) => {
+          const newConversations = new Map(state.conversations);
+          const conversation = newConversations.get(conversationId);
+          if (!conversation) return { conversations: newConversations };
+          newConversations.set(conversationId, {
+            ...conversation,
+            unreadCount: (conversation.unreadCount ?? 0) + 1,
+          });
+          return { conversations: newConversations };
+        }),
+      markConversationRead: (conversationId) => get().clearUnreadCount(conversationId),
+      updateConversationPreview: (conversationId, preview, createdAt) =>
+        set((state) => {
+          const newConversations = new Map(state.conversations);
+          const conversation = newConversations.get(conversationId);
+          if (!conversation) return { conversations: newConversations };
+          newConversations.set(conversationId, {
+            ...conversation,
+            lastMessageAt: createdAt,
+            lastMessage: {
+              id: `preview-${conversationId}-${createdAt}`,
+              conversationId,
+              from: conversation.peerId,
+              to: "",
+              text: preview,
+              timestamp: createdAt,
+              status: "delivered",
+              type: "text",
+            },
+          });
+          return { conversations: newConversations };
+        }),
 
       addMessage: (message) =>
         set((state) => {
           const newMessages = new Map(state.messages);
           const newConversations = new Map(state.conversations);
-
-          const convMessages =
-            newMessages.get(message.conversationId) || [];
-
-          const exists = convMessages.some((m) => m.id === message.id);
-          const existsByPacket =
-            Boolean(message.packetId) &&
-            convMessages.some((m) => m.packetId && m.packetId === message.packetId);
-
-          if (!exists && !existsByPacket) {
-            newMessages.set(message.conversationId, [
-              ...convMessages,
-              message,
-            ]);
-          }
+          const convMessages = newMessages.get(message.conversationId) || [];
+          newMessages.set(message.conversationId, upsertMessageList(convMessages, message));
 
           touchConversation(
             newConversations,
@@ -189,6 +253,11 @@ export const useChatStore = create<ChatStore>()(
             conversations: newConversations,
           };
         }),
+      appendMessage: (conversationId, message) =>
+        get().addMessage({
+          ...message,
+          conversationId,
+        }),
 
       addMessages: (messagesToAdd) =>
         set((state) => {
@@ -196,20 +265,8 @@ export const useChatStore = create<ChatStore>()(
           const newConversations = new Map(state.conversations);
 
           for (const message of messagesToAdd) {
-            const convMessages =
-              newMessages.get(message.conversationId) || [];
-
-            const exists = convMessages.some((m) => m.id === message.id);
-            const existsByPacket =
-              Boolean(message.packetId) &&
-              convMessages.some((m) => m.packetId && m.packetId === message.packetId);
-
-            if (!exists && !existsByPacket) {
-              newMessages.set(message.conversationId, [
-                ...convMessages,
-                message,
-              ]);
-            }
+            const convMessages = newMessages.get(message.conversationId) || [];
+            newMessages.set(message.conversationId, upsertMessageList(convMessages, message));
 
             touchConversation(
               newConversations,
@@ -222,6 +279,33 @@ export const useChatStore = create<ChatStore>()(
             messages: newMessages,
             conversations: newConversations,
           };
+        }),
+      replaceMessage: (conversationId, tempId, realMessage) =>
+        set((state) => {
+          const newMessages = new Map(state.messages);
+          const convMessages = newMessages.get(conversationId) || [];
+          const next = convMessages.map((message) =>
+            message.id === tempId || (realMessage.clientMessageId && message.clientMessageId === realMessage.clientMessageId)
+              ? { ...message, ...realMessage, id: realMessage.id }
+              : message
+          );
+          newMessages.set(conversationId, upsertMessageList(next, realMessage));
+          return { messages: newMessages };
+        }),
+      dedupeMessages: (conversationId) =>
+        set((state) => {
+          const newMessages = new Map(state.messages);
+          const convMessages = newMessages.get(conversationId) || [];
+          const seen = new Set<string>();
+          const deduped: ChatMessage[] = [];
+          for (const message of convMessages) {
+            const key = messageDedupKey(message);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            deduped.push(message);
+          }
+          newMessages.set(conversationId, deduped);
+          return { messages: newMessages };
         }),
 
       getMessages: (conversationId) => {
