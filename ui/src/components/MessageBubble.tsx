@@ -11,6 +11,7 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import { copyEncryptedMessage } from "@/lib/clipboardCrypto";
 import { usePrivacyReveal } from "@/hooks/usePrivacyReveal";
 import { logAuditEvent } from "@/services/audit";
+import { sanitizeVisibleMessageText } from "@/lib/messageText";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -21,11 +22,13 @@ interface MessageBubbleProps {
 type MessageMeta = {
   envelope?: Record<string, unknown>;
   debug?: Record<string, unknown>;
+  original_plaintext_preview?: string;
 };
 
 type ExtendedChatMessage = ChatMessage & {
   cryptoEnvelope?: Record<string, unknown>;
   debug?: Record<string, unknown>;
+  plaintext_preview?: string;
   metadata?: MessageMeta;
 };
 
@@ -74,6 +77,11 @@ function MessageBubbleInner({ message, isFirstInGroup, isLastInGroup }: MessageB
 
   const privacyEnabled = prefs.privacyMode && prefs.blurMessages;
   const isSensitiveHidden = privacyEnabled && !revealed;
+  const visibleText = sanitizeVisibleMessageText(
+    message.text,
+    (message as ExtendedChatMessage).metadata?.original_plaintext_preview ||
+      (message as ExtendedChatMessage).plaintext_preview
+  );
 
   useEffect(() => {
     if (!prefs.auditLeakEvents) return;
@@ -194,7 +202,7 @@ function MessageBubbleInner({ message, isFirstInGroup, isLastInGroup }: MessageB
     <>
       <div className={`flex ${isOutgoing ? "justify-end" : "justify-start"} ${isFirstInGroup ? "mt-2" : "mt-0.5"}`}>
         <div className="flex max-w-[72%] flex-col gap-1">
-          {message.text && (
+          {visibleText && (
             <div className="relative">
               {isExpired ? (
                 <div
@@ -234,7 +242,7 @@ function MessageBubbleInner({ message, isFirstInGroup, isLastInGroup }: MessageB
                     : "rounded-bl-lg border border-white/10 bg-white/[0.07] text-zinc-100"
                 } ${!canOpenTrace && !isSensitiveHidden ? "cursor-default" : ""}`}
               >
-                <span className={`block transition duration-200 ${isSensitiveHidden ? "blur-sm select-none" : "blur-0 select-text"}`}>{message.text}</span>
+                <span className={`block transition duration-200 ${isSensitiveHidden ? "blur-sm select-none" : "blur-0 select-text"}`}>{visibleText}</span>
               </button>
               )}
 

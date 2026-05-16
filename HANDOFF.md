@@ -2882,3 +2882,37 @@ Build/test result:
 
 ### Build Result
 - `cd ui && npm run build` -> success.
+
+## 2026-05-16 Privacy Copy Rendering Audit + Fix
+
+### Feature Status (Done / Missing / Fixed)
+- Blur default in Privacy Mode: Done.
+- Reveal auto-hide 3-5s: Done.
+- Dynamic watermark over chat: Done.
+- Encrypted copy default (not plaintext): Done.
+- Hide on focus loss (blur/visibility/pagehide): Done.
+- Hide now button in header: Done.
+- Encrypted export rendered as visible message content: Fixed.
+
+### Root Cause
+- Some message hydration/render paths could display text values that look like encrypted-export blocks (`-----BEGIN CURVEED25519 ENCRYPTED MESSAGE----- ...`) instead of safe visible message text.
+
+### Fix Applied
+- Added message text sanitizer utility to block encrypted-export blocks from visible rendering.
+- Applied sanitizer in:
+  - message bubble rendering path,
+  - conversation history hydration path,
+  - websocket incoming parse path.
+- Fallback behavior when encrypted-export text is detected:
+  - prefer `metadata.original_plaintext_preview` or `plaintext_preview` if available,
+  - else show `[Tin nhắn mã hóa]`.
+- Clipboard encrypted export logic remains only in copy handlers (`onCopy`/`Copy encrypted`) and is not used for visible bubble content.
+
+### Files Changed
+- `ui/src/lib/messageText.ts` (new)
+- `ui/src/components/MessageBubble.tsx`
+- `ui/src/components/Sidebar.tsx`
+- `ui/src/providers/WebSocketProvider.tsx`
+
+### Build Result
+- `cd ui && npm run build` -> success.

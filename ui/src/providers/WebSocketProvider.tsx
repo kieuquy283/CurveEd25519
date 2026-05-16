@@ -25,6 +25,7 @@ import {
 import { ChatMessage } from "@/types/models";
 import { normalizeChatAttachment } from "@/lib/normalizeAttachment";
 import { normalizeEmail } from "@/services/connections";
+import { sanitizeVisibleMessageText } from "@/lib/messageText";
 
 function parseIncomingEnvelope(rawText: string) {
 
@@ -131,7 +132,7 @@ function parseIncomingEnvelope(rawText: string) {
   }
 
   return {
-    text,
+    text: sanitizeVisibleMessageText(text),
     type,
     attachments,
     file,

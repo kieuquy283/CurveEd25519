@@ -28,6 +28,7 @@ import { listNotifications, markNotificationRead } from "@/services/notification
 import { useNotificationStore } from "@/store/useNotificationStore";
 import { getNickname } from "@/lib/conversationNicknames";
 import { normalizeChatAttachment } from "@/lib/normalizeAttachment";
+import { sanitizeVisibleMessageText } from "@/lib/messageText";
 
 interface SidebarProps {
   onSelectConversation?: () => void;
@@ -196,7 +197,10 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
           conversationId: String(m.conversation_id || activeConversationId),
           from: String(m.sender_email || ""),
           to: String(m.receiver_email || ""),
-          text: String(m.plaintext_preview || ""),
+          text: sanitizeVisibleMessageText(
+            String(m.plaintext_preview || ""),
+            String((m.metadata as Record<string, unknown> | undefined)?.original_plaintext_preview || "")
+          ),
           type: String(m.message_type || "text") as "text" | "file",
           envelope: (m.ciphertext_envelope as Record<string, unknown> | undefined) || undefined,
           attachments:
@@ -357,7 +361,10 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
                           conversationId: String(m.conversation_id || convId || peerEmail),
                           from: String(m.sender_email || ""),
                           to: String(m.receiver_email || ""),
-                          text: String(m.plaintext_preview || ""),
+                          text: sanitizeVisibleMessageText(
+                            String(m.plaintext_preview || ""),
+                            String((m.metadata as Record<string, unknown> | undefined)?.original_plaintext_preview || "")
+                          ),
                           type: String(m.message_type || "text") as "text" | "file",
                           envelope: (m.ciphertext_envelope as Record<string, unknown> | undefined) || undefined,
                           attachments:
