@@ -171,6 +171,7 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
           userId={currentUser?.id || undefined}
           conversationId={activeConversation.id}
           peerName={activeConversation.peerName}
+          peerEmail={activeConversation.peerId}
         />
 
         <MessageList messages={messages} conversationId={conversationId} highlightedMessageId={highlightedMessageId} />

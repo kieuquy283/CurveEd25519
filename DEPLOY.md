@@ -139,4 +139,31 @@ create table if not exists app_signed_files (
   signed_file_json jsonb,
   created_at timestamptz
 );
+
+create table if not exists app_audit_events (
+  id text primary key,
+  user_email text not null,
+  event_type text not null,
+  conversation_id text,
+  peer_email text,
+  peer_display_name text,
+  trace_code text,
+  session_id text,
+  user_agent text,
+  ip_address text,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_app_audit_events_trace_code
+on app_audit_events(trace_code);
+
+create index if not exists idx_app_audit_events_user_email
+on app_audit_events(user_email);
+
+create index if not exists idx_app_audit_events_conversation_id
+on app_audit_events(conversation_id);
+
+create index if not exists idx_app_audit_events_created_at
+on app_audit_events(created_at);
 ```

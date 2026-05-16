@@ -1,4 +1,4 @@
-﻿export type AuditEventType =
+export type AuditEventType =
   | "message_revealed"
   | "message_copied_encrypted"
   | "plaintext_copy_attempt_blocked"
@@ -6,7 +6,8 @@
   | "file_download_attempt"
   | "file_download_confirmed"
   | "privacy_mode_enabled"
-  | "privacy_mode_disabled";
+  | "privacy_mode_disabled"
+  | "watermark_trace";
 
 export interface AuditEventPayload {
   user_email?: string;
@@ -16,6 +17,17 @@ export interface AuditEventPayload {
   event_type: AuditEventType;
   created_at?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface WatermarkTracePayload {
+  trace_code: string;
+  user_email: string;
+  conversation_id?: string;
+  peer_email?: string;
+  peer_display_name?: string;
+  session_id: string;
+  time_window_start: string;
+  time_window_end: string;
 }
 
 export async function logAuditEvent(payload: AuditEventPayload): Promise<void> {
@@ -33,5 +45,19 @@ export async function logAuditEvent(payload: AuditEventPayload): Promise<void> {
     });
   } catch {
     // best effort only
+  }
+}
+
+export async function logWatermarkTrace(payload: WatermarkTracePayload): Promise<{ ok: boolean }> {
+  try {
+    const { getApiBaseUrl } = await import("@/config/env");
+    const response = await fetch(`${getApiBaseUrl()}/api/audit/watermark-trace`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return { ok: response.ok };
+  } catch {
+    return { ok: false };
   }
 }

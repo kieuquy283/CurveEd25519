@@ -484,6 +484,8 @@ class StorageRepository:
         peer_email = str(record.get("peer_email") or "").strip().lower()
         record["user_email"] = user_email or None
         record["peer_email"] = peer_email or None
+        if record.get("trace_code") is not None:
+            record["trace_code"] = str(record.get("trace_code") or "").strip().upper() or None
         record["metadata"] = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
         if self.is_supabase():
             self._supabase.table("app_audit_events").upsert(record, on_conflict="id").execute()
@@ -492,6 +494,31 @@ class StorageRepository:
         rows.append(record)
         self._write_rows(self.audit_events_path, rows)
         return record
+
+    def get_audit_event_by_trace_code(self, trace_code: str) -> dict[str, Any] | None:
+        trace = str(trace_code or "").strip().upper()
+        if not trace:
+            return None
+        if self.is_supabase():
+            rows = list(
+                self._supabase.table("app_audit_events")
+                .select("*")
+                .eq("trace_code", trace)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+            if not rows:
+                return None
+            return dict(rows[0])
+        rows = self._read_rows(self.audit_events_path)
+        matches = [r for r in rows if str(r.get("trace_code") or "").strip().upper() == trace]
+        if not matches:
+            return None
+        matches.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+        return matches[0]
     
     def create_notification(self, notif: dict[str, Any]) -> dict[str, Any]:
         record = dict(notif)
