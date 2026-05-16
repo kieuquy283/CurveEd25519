@@ -319,6 +319,7 @@ export interface UiPreferences {
   privacyShieldEnabled: boolean;
   shieldOnBlur: boolean;
   shieldOnPrintScreen: boolean;
+  shieldPersistUntilUnlock: boolean;
   shieldMode: "black" | "blur";
 }
 

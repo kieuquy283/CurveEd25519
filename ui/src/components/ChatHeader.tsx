@@ -61,7 +61,8 @@ export function ChatHeader({
           type="button"
           onClick={onActivateShield}
           className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
-          aria-label="Chế độ bảo vệ màn hình"
+          aria-label="Ẩn ngay"
+          title="Ẩn ngay"
         >
           <Shield size={18} />
         </button>

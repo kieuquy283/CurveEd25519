@@ -46,6 +46,7 @@ const defaultPreferences: UiPreferences = {
   privacyShieldEnabled: false,
   shieldOnBlur: true,
   shieldOnPrintScreen: true,
+  shieldPersistUntilUnlock: true,
   shieldMode: "black",
 };
 

@@ -2802,3 +2802,51 @@ Build/test result:
 
 ### Build Result
 - `cd ui && npm run build` -> success.
+
+## 2026-05-16 Privacy Shield Hardening for Windows Screenshot Shortcuts (Best-Effort)
+
+### Improved
+- Hardened Privacy Shield activation paths to trigger earlier and more broadly:
+  - `window.blur`
+  - `window.focusout`
+  - `document.visibilitychange` (hidden)
+  - `window.pagehide`
+  - `document.freeze` (best-effort)
+  - `window.keydown` with capture phase
+- Expanded screenshot shortcut detection (best-effort):
+  - `event.key === "PrintScreen"`
+  - `event.code === "PrintScreen"`
+  - `Meta+Shift+S` variants via `key/code/getModifierState("Meta")`
+- On shortcut detection, app now attempts:
+  - `showShield("screenshot_shortcut")`
+  - `preventDefault()`
+  - `stopPropagation()`
+  - `stopImmediatePropagation()` (when supported)
+  - plus best-effort clipboard clear for PrintScreen.
+- Changed shield behavior to safer default lock:
+  - once visible, shield stays on until user clicks `Hiện lại`.
+  - added setting toggle for persistent lock (`Giữ màn hình đen cho đến khi tôi bấm Hiện lại`) default enabled.
+- Strengthened overlay to be fully global and top-most:
+  - portal to `document.body`
+  - `fixed inset-0`
+  - `z-[2147483647]`
+  - black background
+  - `pointer-events-auto`
+  - `select-none`
+- Kept manual emergency control in header button (`Ẩn ngay`).
+
+### Limitation (Important)
+- Web apps cannot reliably block OS-level capture tools and shortcuts (including Shift+Win+S).
+- Privacy Shield is best-effort only; watermark remains an important fallback trace layer if capture occurs before browser events fire.
+
+### Files Changed
+- `ui/src/hooks/usePrivacyShield.ts`
+- `ui/src/components/privacy/PrivacyShieldOverlay.tsx`
+- `ui/src/components/settings/PrivacySettings.tsx`
+- `ui/src/components/ChatHeader.tsx`
+- `ui/src/types/models.ts`
+- `ui/src/store/useSettingsStore.ts`
+- `ui/src/store/useUiStore.ts`
+
+### Build Result
+- `cd ui && npm run build` -> success.
