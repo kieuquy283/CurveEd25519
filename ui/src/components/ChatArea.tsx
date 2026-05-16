@@ -166,7 +166,7 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
         </div>
 
         <DynamicWatermark
-          enabled={prefs.privacyMode && prefs.watermarkEnabled}
+          enabled={prefs.watermarkEnabled}
           userEmail={currentUser?.email || undefined}
           userId={currentUser?.id || undefined}
           conversationId={activeConversation.id}

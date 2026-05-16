@@ -2850,3 +2850,35 @@ Build/test result:
 
 ### Build Result
 - `cd ui && npm run build` -> success.
+
+## 2026-05-16 Privacy Mode / Privacy Shield Audit (6 Features)
+
+### Audit Status
+1. Blur messages by default when Privacy Mode is enabled: Implemented.
+- Message text and attachment area are blurred when `privacyMode && blurMessages` and only revealed per-message.
+
+2. Reveal individual message temporarily for 3-5 seconds: Implemented (completed in this pass).
+- `usePrivacyReveal` now clamps reveal timeout to 3000-5000ms.
+- Settings reveal options now constrained to 3s and 5s.
+
+3. Dynamic watermark always visible over chat area: Implemented (completed in this pass).
+- Watermark now follows `watermarkEnabled` directly and is no longer gated by `privacyMode`.
+- Watermark text includes user identity + timestamp + conversation context.
+
+4. Copy message defaults to encrypted export, not plaintext: Implemented.
+- Message copy intercept uses encrypted export payload/placeholder via clipboard crypto utility.
+
+5. Hide/black overlay when app loses focus: Implemented.
+- Privacy Shield listeners cover blur/focusout/visibilitychange/pagehide/freeze and shortcut best-effort triggers.
+- Overlay remains until manual unlock (`Hiện lại`) when persistent mode is enabled (default).
+
+6. Manual "Hide now" button in conversation header: Implemented.
+- Header shield button triggers immediate global overlay.
+
+### Files Changed
+- `ui/src/components/ChatArea.tsx`
+- `ui/src/hooks/usePrivacyReveal.ts`
+- `ui/src/components/settings/PrivacySettings.tsx`
+
+### Build Result
+- `cd ui && npm run build` -> success.

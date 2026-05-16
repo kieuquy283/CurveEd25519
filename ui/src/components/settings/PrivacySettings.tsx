@@ -90,7 +90,6 @@ export default function PrivacySettings() {
           >
             <option value={3000}>3 giây</option>
             <option value={5000}>5 giây</option>
-            <option value={10000}>10 giây</option>
           </select>
         </label>
       </div>

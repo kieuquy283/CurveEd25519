@@ -29,10 +29,11 @@ export function usePrivacyReveal(messageId: string, autoHideMs: number) {
   const reveal = useCallback(() => {
     clearTimer();
     setRevealed(true);
+    const hideDelayMs = Math.min(5000, Math.max(3000, autoHideMs));
     timerRef.current = window.setTimeout(() => {
       setRevealed(false);
       timerRef.current = null;
-    }, Math.max(500, autoHideMs));
+    }, hideDelayMs);
   }, [autoHideMs, clearTimer]);
 
   useEffect(() => {
