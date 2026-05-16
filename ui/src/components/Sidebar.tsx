@@ -29,6 +29,8 @@ import { useNotificationStore } from "@/store/useNotificationStore";
 import { getNickname } from "@/lib/conversationNicknames";
 import { normalizeChatAttachment } from "@/lib/normalizeAttachment";
 import { sanitizeVisibleMessageText } from "@/lib/messageText";
+import { CameraCaptureGuard } from "@/components/security/CameraCaptureGuard";
+import { logAuditEvent } from "@/services/audit";
 
 interface SidebarProps {
   onSelectConversation?: () => void;
@@ -397,6 +399,24 @@ export function Sidebar({ onSelectConversation }: SidebarProps) {
 
         <div className="mb-3 rounded-2xl border border-violet-400/20 bg-violet-500/10 p-2 text-[10px] text-violet-200">
           Tin nhắn được mã hóa đầu cuối · Verified contacts: {trustedContacts.length}
+        </div>
+
+        <div className="mb-3">
+          <CameraCaptureGuard
+            conversationId={activeConversationId || undefined}
+            onAuditEvent={async (event) => {
+              await logAuditEvent({
+                event_type: event.event_type,
+                user_email: currentUser?.email || currentUser?.id || undefined,
+                conversation_id: event.conversation_id,
+                metadata: {
+                  detected_class: event.detected_class,
+                  score: event.score,
+                  timestamp: event.timestamp,
+                },
+              });
+            }}
+          />
         </div>
 
         <div className="flex items-center gap-2">

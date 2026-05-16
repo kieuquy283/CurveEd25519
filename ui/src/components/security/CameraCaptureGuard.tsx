@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState } from "react";
+
+import { useCameraGuardStore } from "@/store/useCameraGuardStore";
 
 export type CaptureThreat = {
   active: boolean;
@@ -31,12 +33,12 @@ type CocoPrediction = {
 };
 
 const PHONE_THRESHOLD = 0.65;
-const INFO_THRESHOLDS: Record<string, number> = {
-  laptop: 0.65,
-  tv: 0.65,
-};
 
-export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEvent }: CameraCaptureGuardProps) {
+function sameThreat(a: CaptureThreat, b: CaptureThreat): boolean {
+  return a.active === b.active && a.level === b.level && a.label === b.label && a.score === b.score;
+}
+
+function CameraCaptureGuardBase({ conversationId, onThreatChange, onAuditEvent }: CameraCaptureGuardProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const modelRef = useRef<{ detect: (input: HTMLVideoElement) => Promise<CocoPrediction[]> } | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -45,16 +47,25 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
   const clearCountRef = useRef(0);
   const lastThreatActiveRef = useRef(false);
   const isDetectingRef = useRef(false);
+  const threatRef = useRef<CaptureThreat>({ active: false, level: "none" });
+  const infoRef = useRef<{ label: string; score: number } | null>(null);
+
+  const setStoreEnabled = useCameraGuardStore((s) => s.setEnabled);
+  const setStoreStatus = useCameraGuardStore((s) => s.setStatus);
+  const setStoreThreat = useCameraGuardStore((s) => s.setThreat);
 
   const [status, setStatus] = useState<GuardStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(true);
-  const [threat, setThreat] = useState<CaptureThreat>({ active: false, level: "none" });
+  const [showPreview, setShowPreview] = useState(false);
   const [infoDetection, setInfoDetection] = useState<{ label: string; score: number } | null>(null);
+  const [threat, setThreat] = useState<CaptureThreat>({ active: false, level: "none" });
 
   const emitThreat = useCallback(
     (nextThreat: CaptureThreat) => {
+      if (sameThreat(threatRef.current, nextThreat)) return;
+      threatRef.current = nextThreat;
       setThreat(nextThreat);
+      setStoreThreat(nextThreat);
       onThreatChange?.(nextThreat);
       if (nextThreat.active && !lastThreatActiveRef.current) {
         void onAuditEvent?.({
@@ -67,20 +78,14 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
       }
       lastThreatActiveRef.current = nextThreat.active;
     },
-    [conversationId, onAuditEvent, onThreatChange]
+    [conversationId, onAuditEvent, onThreatChange, setStoreThreat]
   );
 
-  const stopGuard = useCallback(() => {
+  const cleanupResources = useCallback(() => {
     if (intervalRef.current !== null) {
       window.clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    hitCountRef.current = 0;
-    clearCountRef.current = 0;
-    isDetectingRef.current = false;
-    modelRef.current = null;
-    setInfoDetection(null);
-
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -89,11 +94,24 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
       videoRef.current.pause();
       videoRef.current.srcObject = null;
     }
+    modelRef.current = null;
+    isDetectingRef.current = false;
+    hitCountRef.current = 0;
+    clearCountRef.current = 0;
+  }, []);
 
-    setErrorMessage(null);
-    emitThreat({ active: false, level: "none" });
+  const stopGuard = useCallback(() => {
+    cleanupResources();
+    setStoreEnabled(false);
+    setStoreStatus("idle");
     setStatus("idle");
-  }, [emitThreat]);
+    setErrorMessage(null);
+    if (infoRef.current) {
+      infoRef.current = null;
+      setInfoDetection(null);
+    }
+    emitThreat({ active: false, level: "none" });
+  }, [cleanupResources, emitThreat, setStoreEnabled, setStoreStatus]);
 
   const runDetection = useCallback(async () => {
     if (isDetectingRef.current) return;
@@ -104,21 +122,31 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
       const predictions = await modelRef.current.detect(videoRef.current);
 
       let riskyPhone: CocoPrediction | null = null;
-      let infoRisk: CocoPrediction | null = null;
-
+      let infoCandidate: { label: string; score: number } | null = null;
       for (const item of predictions) {
         if (item.class === "person") continue;
         if (item.class === "cell phone" && item.score >= PHONE_THRESHOLD) {
           if (!riskyPhone || item.score > riskyPhone.score) riskyPhone = item;
-          continue;
-        }
-        const infoThreshold = INFO_THRESHOLDS[item.class];
-        if (infoThreshold !== undefined && item.score >= infoThreshold) {
-          if (!infoRisk || item.score > infoRisk.score) infoRisk = item;
+        } else if ((item.class === "laptop" || item.class === "tv") && item.score >= 0.65) {
+          if (!infoCandidate || item.score > infoCandidate.score) infoCandidate = { label: item.class, score: item.score };
         }
       }
 
-      setInfoDetection(infoRisk ? { label: infoRisk.class, score: infoRisk.score } : null);
+      const currentInfo = infoRef.current;
+      if (!currentInfo && infoCandidate) {
+        infoRef.current = infoCandidate;
+        setInfoDetection(infoCandidate);
+      } else if (currentInfo && !infoCandidate) {
+        infoRef.current = null;
+        setInfoDetection(null);
+      } else if (
+        currentInfo &&
+        infoCandidate &&
+        (currentInfo.label !== infoCandidate.label || Math.round(currentInfo.score * 100) !== Math.round(infoCandidate.score * 100))
+      ) {
+        infoRef.current = infoCandidate;
+        setInfoDetection(infoCandidate);
+      }
 
       if (riskyPhone) {
         hitCountRef.current += 1;
@@ -140,7 +168,7 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
         emitThreat({ active: false, level: "none" });
       }
     } catch {
-      // keep guard running if one cycle fails
+      // keep monitoring loop running
     } finally {
       isDetectingRef.current = false;
     }
@@ -149,9 +177,12 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
   const startGuard = useCallback(async () => {
     if (status === "loading" || status === "active") return;
     setStatus("loading");
+    setStoreStatus("loading");
+    setStoreEnabled(true);
     setErrorMessage(null);
     hitCountRef.current = 0;
     clearCountRef.current = 0;
+    emitThreat({ active: false, level: "none" });
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -160,7 +191,7 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
       });
       streamRef.current = stream;
 
-      if (!videoRef.current) throw new Error("Camera preview not ready");
+      if (!videoRef.current) throw new Error("camera_not_ready");
       videoRef.current.srcObject = stream;
       await videoRef.current.play();
 
@@ -170,15 +201,16 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
       modelRef.current = await cocoSsd.load({ base: "lite_mobilenet_v2" });
 
       setStatus("active");
+      setStoreStatus("active");
       intervalRef.current = window.setInterval(() => {
         void runDetection();
-      }, 900);
+      }, 1200);
     } catch (error: unknown) {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
-      if (videoRef.current) videoRef.current.srcObject = null;
+      cleanupResources();
+      setStoreEnabled(false);
+      setStoreStatus("error");
+      setStatus("error");
+      emitThreat({ active: false, level: "none" });
 
       let message = "Cannot start camera guard.";
       if (error && typeof error === "object" && "name" in error) {
@@ -188,44 +220,30 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
         else if (name === "NotReadableError") message = "Camera is busy or blocked by another app.";
       }
       setErrorMessage(message);
-      setStatus("error");
-      emitThreat({ active: false, level: "none" });
     }
-  }, [emitThreat, runDetection, status]);
+  }, [cleanupResources, emitThreat, runDetection, setStoreEnabled, setStoreStatus, status]);
 
   useEffect(() => {
     return () => {
-      if (intervalRef.current !== null) {
-        window.clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
-      if (videoRef.current) {
-        videoRef.current.pause();
-        videoRef.current.srcObject = null;
-      }
-      hitCountRef.current = 0;
-      clearCountRef.current = 0;
-      modelRef.current = null;
-      setInfoDetection(null);
+      cleanupResources();
+      setStoreEnabled(false);
+      setStoreStatus("idle");
+      setStoreThreat({ active: false, level: "none" });
       onThreatChange?.({ active: false, level: "none" });
     };
-  }, [onThreatChange]);
+  }, [cleanupResources, onThreatChange, setStoreEnabled, setStoreStatus, setStoreThreat]);
 
   const statusText =
     status === "loading"
-      ? "Loading model"
+      ? "Loading"
       : threat.active && threat.level === "high"
-        ? "Threat detected"
+        ? "Phone detected"
         : status === "active"
           ? "Monitoring"
-          : "OFF";
+          : "Local only";
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-3">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-2.5">
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -233,26 +251,35 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
             if (status === "active" || status === "loading") stopGuard();
             else void startGuard();
           }}
-          className="rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+          className={`rounded-xl border px-2.5 py-1.5 text-[11px] font-medium ${
+            status === "active" || status === "loading"
+              ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-200"
+              : "border-zinc-500/40 bg-zinc-600/20 text-zinc-200"
+          }`}
         >
-          {status === "active" || status === "loading" ? "Disable Camera Guard" : "Enable Camera Guard"}
+          {status === "active" || status === "loading" ? "Camera Guard: On" : "Camera Guard: Off"}
         </button>
-        <span className="text-xs text-zinc-300">{statusText}</span>
+        <span className="text-[10px] text-zinc-400">{statusText}</span>
       </div>
 
       {status === "idle" || status === "error" ? (
-        <p className="mt-2 text-xs text-zinc-400">Camera Guard is disabled. Camera will not be used.</p>
+        <p className="mt-2 text-[10px] text-zinc-400">Camera Guard is disabled. Camera will not be used.</p>
       ) : (
-        <p className="mt-2 text-xs text-zinc-400">Camera is processed locally. No video or image is uploaded.</p>
+        <p className="mt-2 text-[10px] text-zinc-400">Camera is processed locally. No video or image is uploaded.</p>
       )}
 
-      {status === "error" && <p className="mt-2 text-xs text-rose-300">{errorMessage}</p>}
+      {status === "error" && <p className="mt-1 text-[10px] text-rose-300">{errorMessage}</p>}
+      {infoDetection && !threat.active && (
+        <p className="mt-1 text-[10px] text-amber-300">
+          Info: {infoDetection.label} ({Math.round(infoDetection.score * 100)}%)
+        </p>
+      )}
 
-      {status === "active" && (
+      {(status === "active" || status === "loading") && (
         <button
           type="button"
           onClick={() => setShowPreview((v) => !v)}
-          className="mt-2 rounded-xl border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-zinc-300 hover:bg-white/10"
+          className="mt-1 text-[10px] text-zinc-300 underline-offset-2 hover:underline"
         >
           {showPreview ? "Hide preview" : "Show preview"}
         </button>
@@ -260,25 +287,13 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
 
       <video
         ref={videoRef}
-        className={showPreview && status === "active" ? "mt-3 h-24 w-40 rounded-lg border border-white/15 object-cover" : "hidden"}
+        className={showPreview && status === "active" ? "mt-2 h-20 w-32 rounded-md border border-white/15 object-cover" : "hidden"}
         muted
         playsInline
       />
-
-      {infoDetection && !threat.active && (
-        <div className="mt-3 rounded-lg border border-amber-300/30 bg-amber-500/10 p-2 text-xs text-amber-100">
-          Info: {infoDetection.label} ({Math.round(infoDetection.score * 100)}%)
-        </div>
-      )}
-
-      {threat.active && threat.level === "high" && (
-        <div className="mt-3 rounded-lg border border-rose-400/40 bg-rose-500/15 p-2 text-xs text-rose-100">
-          <div className="font-semibold">Possible external recording device detected.</div>
-          <div className="mt-1">
-            {threat.label || "cell phone"} {typeof threat.score === "number" ? `(${Math.round(threat.score * 100)}%)` : ""}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+
+export const CameraCaptureGuard = memo(CameraCaptureGuardBase);
+
