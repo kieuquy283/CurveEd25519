@@ -30,14 +30,10 @@ type CocoPrediction = {
   bbox: [number, number, number, number];
 };
 
-const LOW_CLASS = "person";
-
-const RISK_THRESHOLDS: Record<string, number> = {
-  "cell phone": 0.55,
-  camera: 0.55,
+const PHONE_THRESHOLD = 0.65;
+const INFO_THRESHOLDS: Record<string, number> = {
   laptop: 0.65,
   tv: 0.65,
-  person: 0.75,
 };
 
 export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEvent }: CameraCaptureGuardProps) {
@@ -54,6 +50,7 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(true);
   const [threat, setThreat] = useState<CaptureThreat>({ active: false, level: "none" });
+  const [infoDetection, setInfoDetection] = useState<{ label: string; score: number } | null>(null);
 
   const emitThreat = useCallback(
     (nextThreat: CaptureThreat) => {
@@ -82,6 +79,7 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
     clearCountRef.current = 0;
     isDetectingRef.current = false;
     modelRef.current = null;
+    setInfoDetection(null);
 
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
@@ -97,25 +95,6 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
     setStatus("idle");
   }, [emitThreat]);
 
-  const findHighestRisk = (predictions: CocoPrediction[]): CaptureThreat | null => {
-    let picked: CocoPrediction | null = null;
-    for (const item of predictions) {
-      const threshold = RISK_THRESHOLDS[item.class];
-      if (threshold === undefined || item.score < threshold) continue;
-      if (!picked || item.score > picked.score) picked = item;
-    }
-    if (!picked) return null;
-
-    const level: CaptureThreat["level"] = picked.class === LOW_CLASS ? "low" : picked.score >= 0.8 ? "high" : "medium";
-    return {
-      active: true,
-      label: picked.class,
-      score: picked.score,
-      bbox: picked.bbox,
-      level,
-    };
-  };
-
   const runDetection = useCallback(async () => {
     if (isDetectingRef.current) return;
     if (!modelRef.current || !videoRef.current || videoRef.current.readyState < 2) return;
@@ -123,9 +102,25 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
     isDetectingRef.current = true;
     try {
       const predictions = await modelRef.current.detect(videoRef.current);
-      const risk = findHighestRisk(predictions);
 
-      if (risk) {
+      let riskyPhone: CocoPrediction | null = null;
+      let infoRisk: CocoPrediction | null = null;
+
+      for (const item of predictions) {
+        if (item.class === "person") continue;
+        if (item.class === "cell phone" && item.score >= PHONE_THRESHOLD) {
+          if (!riskyPhone || item.score > riskyPhone.score) riskyPhone = item;
+          continue;
+        }
+        const infoThreshold = INFO_THRESHOLDS[item.class];
+        if (infoThreshold !== undefined && item.score >= infoThreshold) {
+          if (!infoRisk || item.score > infoRisk.score) infoRisk = item;
+        }
+      }
+
+      setInfoDetection(infoRisk ? { label: infoRisk.class, score: infoRisk.score } : null);
+
+      if (riskyPhone) {
         hitCountRef.current += 1;
         clearCountRef.current = 0;
       } else {
@@ -133,13 +128,19 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
         hitCountRef.current = 0;
       }
 
-      if (hitCountRef.current >= 3) {
-        emitThreat(risk || { active: true, level: "low" });
+      if (hitCountRef.current >= 3 && riskyPhone) {
+        emitThreat({
+          active: true,
+          label: riskyPhone.class,
+          score: riskyPhone.score,
+          bbox: riskyPhone.bbox,
+          level: "high",
+        });
       } else if (clearCountRef.current >= 5) {
         emitThreat({ active: false, level: "none" });
       }
     } catch {
-      // keep guard running even if one inference cycle fails
+      // keep guard running if one cycle fails
     } finally {
       isDetectingRef.current = false;
     }
@@ -149,6 +150,8 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
     if (status === "loading" || status === "active") return;
     setStatus("loading");
     setErrorMessage(null);
+    hitCountRef.current = 0;
+    clearCountRef.current = 0;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -204,8 +207,22 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
         videoRef.current.pause();
         videoRef.current.srcObject = null;
       }
+      hitCountRef.current = 0;
+      clearCountRef.current = 0;
+      modelRef.current = null;
+      setInfoDetection(null);
+      onThreatChange?.({ active: false, level: "none" });
     };
-  }, []);
+  }, [onThreatChange]);
+
+  const statusText =
+    status === "loading"
+      ? "Loading model"
+      : threat.active && threat.level === "high"
+        ? "Threat detected"
+        : status === "active"
+          ? "Monitoring"
+          : "OFF";
 
   return (
     <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-3">
@@ -218,25 +235,28 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
           }}
           className="rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-white/10"
         >
-          Camera guard
+          {status === "active" || status === "loading" ? "Disable Camera Guard" : "Enable Camera Guard"}
         </button>
-        {status === "active" && (
-          <button
-            type="button"
-            onClick={() => setShowPreview((v) => !v)}
-            className="rounded-xl border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-zinc-300 hover:bg-white/10"
-          >
-            {showPreview ? "Hide preview" : "Show preview"}
-          </button>
-        )}
+        <span className="text-xs text-zinc-300">{statusText}</span>
       </div>
 
-      <p className="mt-2 text-xs text-zinc-400">
-        Camera is processed locally. No video, image, or frame is stored or uploaded.
-      </p>
+      {status === "idle" || status === "error" ? (
+        <p className="mt-2 text-xs text-zinc-400">Camera Guard is disabled. Camera will not be used.</p>
+      ) : (
+        <p className="mt-2 text-xs text-zinc-400">Camera is processed locally. No video or image is uploaded.</p>
+      )}
 
-      {status === "loading" && <p className="mt-2 text-xs text-amber-300">Loading camera + model...</p>}
       {status === "error" && <p className="mt-2 text-xs text-rose-300">{errorMessage}</p>}
+
+      {status === "active" && (
+        <button
+          type="button"
+          onClick={() => setShowPreview((v) => !v)}
+          className="mt-2 rounded-xl border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-zinc-300 hover:bg-white/10"
+        >
+          {showPreview ? "Hide preview" : "Show preview"}
+        </button>
+      )}
 
       <video
         ref={videoRef}
@@ -245,11 +265,17 @@ export function CameraCaptureGuard({ conversationId, onThreatChange, onAuditEven
         playsInline
       />
 
-      {threat.active && (
+      {infoDetection && !threat.active && (
+        <div className="mt-3 rounded-lg border border-amber-300/30 bg-amber-500/10 p-2 text-xs text-amber-100">
+          Info: {infoDetection.label} ({Math.round(infoDetection.score * 100)}%)
+        </div>
+      )}
+
+      {threat.active && threat.level === "high" && (
         <div className="mt-3 rounded-lg border border-rose-400/40 bg-rose-500/15 p-2 text-xs text-rose-100">
           <div className="font-semibold">Possible external recording device detected.</div>
           <div className="mt-1">
-            {threat.label || "unknown"} {typeof threat.score === "number" ? `(${Math.round(threat.score * 100)}%)` : ""}
+            {threat.label || "cell phone"} {typeof threat.score === "number" ? `(${Math.round(threat.score * 100)}%)` : ""}
           </div>
         </div>
       )}

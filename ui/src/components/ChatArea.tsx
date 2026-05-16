@@ -197,7 +197,7 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
           peerEmail={activeConversation.peerId}
         />
 
-        <div className={captureThreat.active ? "relative blur-sm" : "relative"}>
+        <div className={captureThreat.active && captureThreat.level === "high" ? "relative blur-sm" : "relative"}>
           <MessageList messages={messages} conversationId={conversationId} highlightedMessageId={highlightedMessageId} />
         </div>
 
