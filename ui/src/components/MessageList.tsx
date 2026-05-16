@@ -14,9 +14,11 @@ interface MessageListProps {
   messages: ChatMessage[];
   conversationId: string;
   highlightedMessageId?: string | null;
+  className?: string;
 }
 
-export function MessageList({ messages, conversationId, highlightedMessageId }: MessageListProps) {
+export function MessageList({ messages, conversationId, highlightedMessageId, className }: MessageListProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const scrollEndRef = useRef<HTMLDivElement>(null);
   void conversationId;
 
@@ -24,16 +26,17 @@ export function MessageList({ messages, conversationId, highlightedMessageId }: 
   const typingPeers = Array.from(typingPeersMap.values()).map((typing) => typing.peerId);
 
   useEffect(() => {
-    const el = scrollEndRef.current?.parentElement as HTMLElement | null;
+    const el = containerRef.current;
     if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
     if (atBottom) scrollEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingPeers]);
 
   return (
-    <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+    <div ref={containerRef} className={className ?? "flex-1 min-h-0 overflow-y-auto px-5 py-4"}>
+      <div className="space-y-4">
       {messages.length === 0 ? (
-        <div className="flex h-full items-center justify-center">
+        <div className="flex min-h-full items-center justify-center">
           <div className="text-center text-zinc-500">
             <p className="text-sm">Đoạn chat chưa có tin nhắn</p>
             <p className="mt-1 text-xs">Bắt đầu cuộc trò chuyện an toàn</p>
@@ -58,6 +61,7 @@ export function MessageList({ messages, conversationId, highlightedMessageId }: 
           <div ref={scrollEndRef} />
         </>
       )}
+      </div>
     </div>
   );
 }

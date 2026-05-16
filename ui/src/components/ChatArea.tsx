@@ -18,6 +18,7 @@ import VerifyConnectionRequiredModal from "@/components/connection/VerifyConnect
 import { ConnectionStatusResponse, normalizeEmail } from "@/services/connections";
 import { useConnectionStatusStore } from "@/store/useConnectionStatusStore";
 import { useCameraGuardStore } from "@/store/useCameraGuardStore";
+import { cn } from "@/lib/utils";
 
 interface ChatAreaProps {
   conversationId: string;
@@ -142,8 +143,8 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
   };
 
   return (
-    <div className="flex h-full min-w-0 gap-3 lg:gap-4">
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950/45 backdrop-blur-xl">
+    <div className="flex h-full min-h-0 min-w-0 gap-3 lg:gap-4">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-[2rem] border border-white/10 bg-slate-950/45 backdrop-blur-xl">
         <ChatHeader
           conversation={activeConversation}
           onBack={onBack}
@@ -164,7 +165,7 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
           onActivateShield={onActivateShield}
         />
 
-        <div className="mx-auto mt-4 max-w-md rounded-3xl border border-violet-400/20 bg-violet-500/10 px-5 py-3 text-center text-sm text-zinc-300 shadow-[0_0_40px_rgba(124,58,237,0.18)] backdrop-blur">
+        <div className="mx-auto mt-4 shrink-0 max-w-md rounded-3xl border border-violet-400/20 bg-violet-500/10 px-5 py-3 text-center text-sm text-zinc-300 shadow-[0_0_40px_rgba(124,58,237,0.18)] backdrop-blur">
           Tin nhắn được mã hóa đầu cuối
         </div>
 
@@ -177,18 +178,35 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
           peerEmail={activeConversation.peerId}
         />
 
-        <div className={guardEnabled && captureThreat.active && captureThreat.level === "high" ? "relative blur-sm" : "relative"}>
-          <MessageList messages={messages} conversationId={conversationId} highlightedMessageId={highlightedMessageId} />
+        <div className="relative flex-1 min-h-0">
+          <MessageList
+            messages={messages}
+            conversationId={conversationId}
+            highlightedMessageId={highlightedMessageId}
+            className={cn(
+              "flex-1 min-h-0 overflow-y-auto px-5 py-4",
+              guardEnabled && captureThreat.active && captureThreat.level === "high" && "blur-sm"
+            )}
+          />
+          {guardEnabled && captureThreat.active && captureThreat.level === "high" && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/20">
+              <div className="rounded-xl border border-rose-300/40 bg-rose-900/40 px-4 py-2 text-xs text-rose-100">
+                Possible external recording device detected
+              </div>
+            </div>
+          )}
         </div>
 
-        <MessageComposer
-          conversationId={conversationId}
-          peerIdentifier={activeConversation.peerId}
-          connectionStatus={connectionStatus}
-          onConnectionStatusChange={applyStatus}
-          onOpenConnectionStatusModal={() => setConnectionStatusOpen(true)}
-          refreshConnectionStatus={refreshConnectionStatus}
-        />
+        <div className="shrink-0">
+          <MessageComposer
+            conversationId={conversationId}
+            peerIdentifier={activeConversation.peerId}
+            connectionStatus={connectionStatus}
+            onConnectionStatusChange={applyStatus}
+            onOpenConnectionStatusModal={() => setConnectionStatusOpen(true)}
+            refreshConnectionStatus={refreshConnectionStatus}
+          />
+        </div>
       </div>
       <VerifyConnectionRequiredModal
         open={connectionStatusOpen}
