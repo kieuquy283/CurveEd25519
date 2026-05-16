@@ -316,6 +316,10 @@ export interface UiPreferences {
   disablePlaintextCopy: boolean;
   disableContextMenu: boolean;
   auditLeakEvents: boolean;
+  privacyShieldEnabled: boolean;
+  shieldOnBlur: boolean;
+  shieldOnPrintScreen: boolean;
+  shieldMode: "black" | "blur";
 }
 
 export interface SignedFileContainer {

@@ -38,6 +38,10 @@ const DEFAULT_PREFS: UiPreferences = {
   disablePlaintextCopy: true,
   disableContextMenu: true,
   auditLeakEvents: true,
+  privacyShieldEnabled: false,
+  shieldOnBlur: true,
+  shieldOnPrintScreen: true,
+  shieldMode: "black",
 };
 
 const STORAGE_KEY = "mmatt_settings_v1";

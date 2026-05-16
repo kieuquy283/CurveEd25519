@@ -11,9 +11,12 @@ import { ChatArea } from "@/components/ChatArea";
 import { useChatStore } from "@/store/useChatStore";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
+import { usePrivacyShield } from "@/hooks/usePrivacyShield";
+import PrivacyShieldOverlay from "@/components/privacy/PrivacyShieldOverlay";
 
 export function ChatLayout() {
   useTheme();
+  const { shieldActive, showShield, hideShield, shieldMode } = usePrivacyShield();
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const [mobileSidebar, setMobileSidebar] = useState(true);
 
@@ -45,12 +48,17 @@ export function ChatLayout() {
         )}
       >
         {activeConversationId ? (
-          <ChatArea conversationId={activeConversationId} onBack={() => setMobileSidebar(true)} />
+          <ChatArea
+            conversationId={activeConversationId}
+            onBack={() => setMobileSidebar(true)}
+            onActivateShield={showShield}
+          />
         ) : (
           <EmptyState />
         )}
       </main>
       </div>
+      <PrivacyShieldOverlay active={shieldActive} onUnlock={hideShield} mode={shieldMode} />
     </div>
   );
 }

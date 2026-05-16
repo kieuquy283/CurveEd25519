@@ -18,6 +18,34 @@ export default function PrivacySettings() {
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 space-y-2">
         <label className="flex items-center justify-between gap-2 text-sm">
+          <span>Chế độ bảo vệ màn hình</span>
+          <input type="checkbox" checked={prefs.privacyShieldEnabled} onChange={(e) => setPrefs({ privacyShieldEnabled: e.target.checked })} />
+        </label>
+        <label className="flex items-center justify-between gap-2 text-sm">
+          <span>Ẩn khi rời khỏi tab/cửa sổ</span>
+          <input type="checkbox" checked={prefs.shieldOnBlur} onChange={(e) => setPrefs({ shieldOnBlur: e.target.checked })} />
+        </label>
+        <label className="flex items-center justify-between gap-2 text-sm">
+          <span>Ẩn khi nhấn PrintScreen</span>
+          <input
+            type="checkbox"
+            checked={prefs.shieldOnPrintScreen}
+            onChange={(e) => setPrefs({ shieldOnPrintScreen: e.target.checked })}
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block">Kiểu che</span>
+          <select
+            value={prefs.shieldMode}
+            onChange={(e) => setPrefs({ shieldMode: e.target.value as "black" | "blur" })}
+            className="w-full rounded-xl border border-white/10 bg-slate-900/70 px-2 py-1"
+          >
+            <option value="black">Nền đen</option>
+            <option value="blur">Nền mờ</option>
+          </select>
+        </label>
+
+        <label className="flex items-center justify-between gap-2 text-sm">
           <span>Chế độ riêng tư</span>
           <input type="checkbox" checked={prefs.privacyMode} onChange={(e) => setPrefs({ privacyMode: e.target.checked })} />
         </label>

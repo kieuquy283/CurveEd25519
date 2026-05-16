@@ -43,6 +43,10 @@ const defaultPreferences: UiPreferences = {
   disablePlaintextCopy: true,
   disableContextMenu: true,
   auditLeakEvents: true,
+  privacyShieldEnabled: false,
+  shieldOnBlur: true,
+  shieldOnPrintScreen: true,
+  shieldMode: "black",
 };
 
 export const useUiStore = create<UiStore>()(

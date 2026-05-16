@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import React from "react";
-import { ArrowLeft, Circle, Info } from "lucide-react";
+import { ArrowLeft, Circle, Info, Shield } from "lucide-react";
 import { Conversation } from "@/types/models";
 
 interface ChatHeaderProps {
@@ -11,6 +11,7 @@ interface ChatHeaderProps {
   onToggleInfoPanel?: () => void;
   connectionStatusLabel?: string;
   onOpenConnectionSecurity?: () => void;
+  onActivateShield?: () => void;
 }
 
 export function ChatHeader({
@@ -20,6 +21,7 @@ export function ChatHeader({
   onToggleInfoPanel,
   connectionStatusLabel,
   onOpenConnectionSecurity,
+  onActivateShield,
 }: ChatHeaderProps) {
   const displayName = conversation.peerName || conversation.peerId;
   const avatarLetter = displayName.charAt(0).toUpperCase();
@@ -55,6 +57,14 @@ export function ChatHeader({
       </div>
 
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onActivateShield}
+          className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
+          aria-label="Chế độ bảo vệ màn hình"
+        >
+          <Shield size={18} />
+        </button>
         <button
           type="button"
           onClick={onToggleInfoPanel}

@@ -13,7 +13,6 @@ import { ConversationInfoPanel } from "@/components/conversation/ConversationInf
 import { patchConversationMetadata } from "@/services/conversations";
 import { getNickname, setNickname } from "@/lib/conversationNicknames";
 import DynamicWatermark from "@/components/privacy/DynamicWatermark";
-import { dispatchPrivacyHideAll } from "@/hooks/usePrivacyReveal";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import VerifyConnectionRequiredModal from "@/components/connection/VerifyConnectionRequiredModal";
 import { ConnectionStatusResponse, normalizeEmail } from "@/services/connections";
@@ -22,11 +21,12 @@ import { useConnectionStatusStore } from "@/store/useConnectionStatusStore";
 interface ChatAreaProps {
   conversationId: string;
   onBack?: () => void;
+  onActivateShield?: () => void;
 }
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
 
-export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
+export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaProps) {
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const conversations = useChatStore((s) => s.conversations);
@@ -49,20 +49,6 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
       updateConversation(activeConversation.id, { peerName: nick });
     }
   }, [activeConversation, currentUser?.email, updateConversation]);
-
-  useEffect(() => {
-    if (!prefs.privacyMode || !prefs.hideOnWindowBlur) return;
-    const onWindowBlur = () => dispatchPrivacyHideAll();
-    const onVisibility = () => {
-      if (document.visibilityState !== "visible") dispatchPrivacyHideAll();
-    };
-    window.addEventListener("blur", onWindowBlur);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.removeEventListener("blur", onWindowBlur);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [prefs.hideOnWindowBlur, prefs.privacyMode]);
 
   useEffect(() => {
     if (!activeConversation) return;
@@ -172,6 +158,7 @@ export function ChatArea({ conversationId, onBack }: ChatAreaProps) {
                   : "Không kiểm tra được kết nối"
           }
           onOpenConnectionSecurity={() => setConnectionStatusOpen(true)}
+          onActivateShield={onActivateShield}
         />
 
         <div className="mx-auto mt-4 max-w-md rounded-3xl border border-violet-400/20 bg-violet-500/10 px-5 py-3 text-center text-sm text-zinc-300 shadow-[0_0_40px_rgba(124,58,237,0.18)] backdrop-blur">

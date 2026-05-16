@@ -2766,3 +2766,39 @@ Build/test result:
 - Receiver inactive conversation updates unread + notification metadata with conversation id.
 - Notification click opens correct conversation and triggers targeted message fetch.
 - Store-level dedupe prevents duplicate append for repeated hydrate/WS overlap.
+
+## 2026-05-16 Privacy Shield Overlay (Best-Effort)
+
+### Added
+- Added Privacy Shield mode to temporarily hide the UI with a full-screen overlay.
+- Added new settings in Privacy:
+  - `Chế độ bảo vệ màn hình`
+  - `Ẩn khi rời khỏi tab/cửa sổ`
+  - `Ẩn khi nhấn PrintScreen`
+  - overlay style selector (`black` / `blur`).
+- Added manual shield activation button in conversation header.
+- Added full-viewport portal overlay with unlock button (`Hiện lại`) and protected text (`Nội dung đang được bảo vệ`).
+- Added hook to handle:
+  - `window blur`
+  - `document.visibilitychange` hidden
+  - `PrintScreen`
+  - `Ctrl+Shift+S` / `Cmd+Shift+S`
+  - manual show/hide actions
+- Added best-effort clipboard clear on PrintScreen (`navigator.clipboard.writeText("")`) with safe error handling.
+
+### Limitation
+- This is best-effort only. A web app cannot reliably detect, block, or prevent all screenshots/screen recording/other capture methods.
+
+### Files Changed
+- `ui/src/types/models.ts`
+- `ui/src/store/useSettingsStore.ts`
+- `ui/src/store/useUiStore.ts`
+- `ui/src/components/settings/PrivacySettings.tsx`
+- `ui/src/components/ChatHeader.tsx`
+- `ui/src/components/ChatArea.tsx`
+- `ui/src/components/ChatLayout.tsx`
+- `ui/src/hooks/usePrivacyShield.ts` (new)
+- `ui/src/components/privacy/PrivacyShieldOverlay.tsx` (new)
+
+### Build Result
+- `cd ui && npm run build` -> success.
