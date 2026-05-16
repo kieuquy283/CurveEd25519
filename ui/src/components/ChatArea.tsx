@@ -13,10 +13,12 @@ import { ConversationInfoPanel } from "@/components/conversation/ConversationInf
 import { patchConversationMetadata } from "@/services/conversations";
 import { getNickname, setNickname } from "@/lib/conversationNicknames";
 import DynamicWatermark from "@/components/privacy/DynamicWatermark";
+import { CameraCaptureGuard, CaptureThreat } from "@/components/security/CameraCaptureGuard";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import VerifyConnectionRequiredModal from "@/components/connection/VerifyConnectionRequiredModal";
 import { ConnectionStatusResponse, normalizeEmail } from "@/services/connections";
 import { useConnectionStatusStore } from "@/store/useConnectionStatusStore";
+import { logAuditEvent } from "@/services/audit";
 
 interface ChatAreaProps {
   conversationId: string;
@@ -34,6 +36,7 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
   const currentUser = useAuthStore((s) => s.currentUser);
   const prefs = useSettingsStore((s) => s.prefs);
   const [connectionStatusOpen, setConnectionStatusOpen] = useState(false);
+  const [captureThreat, setCaptureThreat] = useState<CaptureThreat>({ active: false, level: "none" });
   const refreshConnectionStatus = useConnectionStatusStore((s) => s.refreshConnectionStatus);
   const getConnectionStatusForPair = useConnectionStatusStore((s) => s.getConnectionStatusForPair);
   const loadingByPair = useConnectionStatusStore((s) => s.loadingByPair);
@@ -165,6 +168,26 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
           Tin nhắn được mã hóa đầu cuối
         </div>
 
+        <div className="mx-5 mt-3">
+          <CameraCaptureGuard
+            conversationId={activeConversation.id}
+            onThreatChange={setCaptureThreat}
+            onAuditEvent={async (event) => {
+              await logAuditEvent({
+                event_type: event.event_type,
+                user_email: currentUser?.email || currentUser?.id || undefined,
+                conversation_id: event.conversation_id,
+                peer_email: activeConversation.peerId,
+                metadata: {
+                  detected_class: event.detected_class,
+                  score: event.score,
+                  timestamp: event.timestamp,
+                },
+              });
+            }}
+          />
+        </div>
+
         <DynamicWatermark
           enabled={prefs.watermarkEnabled}
           userEmail={currentUser?.email || undefined}
@@ -174,7 +197,9 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
           peerEmail={activeConversation.peerId}
         />
 
-        <MessageList messages={messages} conversationId={conversationId} highlightedMessageId={highlightedMessageId} />
+        <div className={captureThreat.active ? "relative blur-sm" : "relative"}>
+          <MessageList messages={messages} conversationId={conversationId} highlightedMessageId={highlightedMessageId} />
+        </div>
 
         <MessageComposer
           conversationId={conversationId}

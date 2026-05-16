@@ -7,7 +7,8 @@ export type AuditEventType =
   | "file_download_confirmed"
   | "privacy_mode_enabled"
   | "privacy_mode_disabled"
-  | "watermark_trace";
+  | "watermark_trace"
+  | "capture_device_detected";
 
 export interface AuditEventPayload {
   user_email?: string;
