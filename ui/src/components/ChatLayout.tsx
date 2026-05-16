@@ -42,7 +42,7 @@ export function ChatLayout() {
 
       <main
         className={cn(
-          "flex min-w-0 flex-1 flex-col overflow-hidden",
+          "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
           "md:flex",
           activeConversationId && !mobileSidebar ? "flex" : "hidden md:flex"
         )}

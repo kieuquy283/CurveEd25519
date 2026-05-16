@@ -33,7 +33,7 @@ export function MessageList({ messages, conversationId, highlightedMessageId, cl
   }, [messages, typingPeers]);
 
   return (
-    <div ref={containerRef} className={className ?? "flex-1 min-h-0 overflow-y-auto px-5 py-4"}>
+    <div ref={containerRef} className={className ?? "h-full overflow-y-auto px-5 py-4"}>
       <div className="space-y-4">
       {messages.length === 0 ? (
         <div className="flex min-h-full items-center justify-center">

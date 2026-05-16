@@ -144,26 +144,28 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
 
   return (
     <div className="flex h-full min-h-0 min-w-0 gap-3 lg:gap-4">
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-[2rem] border border-white/10 bg-slate-950/45 backdrop-blur-xl">
-        <ChatHeader
-          conversation={activeConversation}
-          onBack={onBack}
-          infoPanelOpen={infoPanelOpen}
-          onToggleInfoPanel={() => setInfoPanelOpen((v) => !v)}
-          connectionStatusLabel={
-            loadingStatus
-              ? "Đang kiểm tra kết nối..."
-              : connectionStatus?.reason === "verified_connection"
-              ? "Đã kết nối an toàn"
-              : connectionStatus?.reason === "pending_connection"
-                ? "Đang chờ xác minh"
-                : connectionStatus?.reason
-                  ? "Chưa kết nối"
-                  : "Không kiểm tra được kết nối"
-          }
-          onOpenConnectionSecurity={() => setConnectionStatusOpen(true)}
-          onActivateShield={onActivateShield}
-        />
+      <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950/45 backdrop-blur-xl">
+        <div className="shrink-0">
+          <ChatHeader
+            conversation={activeConversation}
+            onBack={onBack}
+            infoPanelOpen={infoPanelOpen}
+            onToggleInfoPanel={() => setInfoPanelOpen((v) => !v)}
+            connectionStatusLabel={
+              loadingStatus
+                ? "Đang kiểm tra kết nối..."
+                : connectionStatus?.reason === "verified_connection"
+                ? "Đã kết nối an toàn"
+                : connectionStatus?.reason === "pending_connection"
+                  ? "Đang chờ xác minh"
+                  : connectionStatus?.reason
+                    ? "Chưa kết nối"
+                    : "Không kiểm tra được kết nối"
+            }
+            onOpenConnectionSecurity={() => setConnectionStatusOpen(true)}
+            onActivateShield={onActivateShield}
+          />
+        </div>
 
         <div className="mx-auto mt-4 shrink-0 max-w-md rounded-3xl border border-violet-400/20 bg-violet-500/10 px-5 py-3 text-center text-sm text-zinc-300 shadow-[0_0_40px_rgba(124,58,237,0.18)] backdrop-blur">
           Tin nhắn được mã hóa đầu cuối
@@ -178,13 +180,13 @@ export function ChatArea({ conversationId, onBack, onActivateShield }: ChatAreaP
           peerEmail={activeConversation.peerId}
         />
 
-        <div className="relative flex-1 min-h-0">
+        <div className="relative flex-1 min-h-0 overflow-hidden">
           <MessageList
             messages={messages}
             conversationId={conversationId}
             highlightedMessageId={highlightedMessageId}
             className={cn(
-              "flex-1 min-h-0 overflow-y-auto px-5 py-4",
+              "h-full overflow-y-auto px-5 py-4",
               guardEnabled && captureThreat.active && captureThreat.level === "high" && "blur-sm"
             )}
           />
